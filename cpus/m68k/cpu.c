@@ -24,7 +24,7 @@ struct cpu_models models[] = {
 int model_cnt = sizeof(models)/sizeof(models[0]);
 
 
-char *cpu_copyright="vasm M68k/CPU32/ColdFire cpu backend 2.0 (c) 2002-2014 Frank Wille";
+char *cpu_copyright="vasm M68k/CPU32/ColdFire cpu backend 2.0a (c) 2002-2014 Frank Wille";
 char *cpuname = "M68k";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -59,6 +59,7 @@ static unsigned char opt_lea = 1;     /* ADD/SUB #x,An -> LEA (x,An),An */
 static unsigned char opt_lquick = 1;  /* LEA (x,An),An -> ADDQ/SUBQ #x,An */
 static unsigned char opt_immaddr = 1; /* <op>.L #x,An -> <op>.W #x,An */
 static unsigned char opt_speed = 0;   /* optimize for speed, not for size */
+static unsigned char opt_sc = 0;      /* external JMP/JSR are 16-bit PC-rel. */
 static unsigned char no_opt = 0;      /* don't optimize at all! */
 static unsigned char warn_opts = 0;   /* warn on optimizations/translations */
 static unsigned char convert_brackets = 0;  /* convert [ into ( for <020 */
@@ -343,6 +344,7 @@ void cpu_opts(void *opts)
     case OCMD_OPTLQUICK: opt_lquick=arg; break;
     case OCMD_OPTIMMADDR: opt_immaddr=arg; break;
     case OCMD_OPTSPEED: opt_speed=arg; break;
+    case OCMD_SMALLCODE: opt_sc=arg; break;
 
     case OCMD_OPTWARN: warn_opts=arg; break;
     case OCMD_CHKPIC: pic_check=arg; break;
@@ -403,6 +405,7 @@ static void cpu_opts_optinit(section *s)
   add_cpu_opt(s,OCMD_OPTLQUICK,opt_lquick);
   add_cpu_opt(s,OCMD_OPTIMMADDR,opt_immaddr);
   add_cpu_opt(s,OCMD_OPTSPEED,opt_speed);
+  add_cpu_opt(s,OCMD_SMALLCODE,opt_sc);
 
   if (phxass_compat)
     set_optc_symbol();
@@ -431,7 +434,7 @@ void print_cpu_opts(FILE *f,void *opts)
     "opt branch","opt displacement","opt absolute","opt moveq","opt quick",
     "opt branch to nop","opt base disp","opt outer disp",
     "opt adda/subq to lea","opt lea to addq/subq","opt immediate areg",
-    "opt for speed","warn about optimizations",
+    "opt for speed","opt small code","warn about optimizations",
     "PIC check","type and range checks","hide all warnings"
   };
   static const char *cpus[32] = {
@@ -3091,20 +3094,20 @@ dontswap:
       if ((exp>=-0x7f && exp<=0x80 && (man&0x1fffffff)==0) ||
           (exp==-0x3ff && man==0)) {  /* also allow all zeros for 0.0 */
         /* single precision would be sufficient, so convert */
-        if (final) {
-          uint32_t v = (buf[0]&0x80) ? 0x80000000 : 0;  /* m. sign */
+        uint32_t v = (buf[0]&0x80) ? 0x80000000 : 0;  /* m. sign */
 
-          if (exp != -0x3ff)
-            v |= (uint32_t)(exp+0x7f) << 23;  /* exponent */
-          v |= (uint32_t)(man >> 29);         /* mantissa */
+        if (exp != -0x3ff)
+          v |= (uint32_t)(exp+0x7f) << 23;  /* exponent */
+        v |= (uint32_t)(man >> 29);         /* mantissa */
+        if (final) {
           free_op_exp(ip->op[0]);
           ip->op[0]->value[0] = number_expr((taddr)v);
           if (warn_opts>1)
             cpu_error(51,"f<op>.d #m,FPn -> f<op>.s #m,FPn");
-          ip->qualifiers[0] = s_str;
-          ext = 's';
-          setval(1,buf,4,v);
         }
+        ip->qualifiers[0] = s_str;
+        ext = 's';
+        setval(1,buf,4,v);
       }
     }
 
@@ -3285,6 +3288,14 @@ dontswap:
         if (final && warn_opts>1)
           cpu_error(51,"jmp/jsr -> bra/bsr");
       }
+    }
+    else if (opt_sc && !(ip->op[0]->flags & FL_NoOpt) &&
+        ip->op[0]->mode==MODE_Extended && ip->op[0]->reg==REG_AbsLong &&
+        ip->op[0]->base[0]->type==IMPORT) {
+      /* JMP/JSR extlabel --> JMP/JSR extlabel(PC) */
+      ip->op[0]->reg = REG_PC16Disp;
+      if (final && warn_opts>1)
+        cpu_error(51,"jmp/jsr -> jmp/jsr (PC)");
     }
   }
 
@@ -3489,7 +3500,7 @@ dontswap:
 }
 
 
-static taddr oper_size(instruction *ip,operand *op,struct optype *ot)
+static size_t oper_size(instruction *ip,operand *op,struct optype *ot)
 /* returns number of bytes for a single operand */
 {
   int mode = op->mode;
@@ -3530,7 +3541,7 @@ static taddr oper_size(instruction *ip,operand *op,struct optype *ot)
   else if (mode==MODE_An8Format ||
            (mode==MODE_Extended && reg==REG_PC8Format)) {
     if (op->flags & FL_UsesFormat) {
-      int n = 2;
+      size_t n = 2;
 
       if (op->format & FW_FullFormat) {
         if (FW_getBDSize(op->format) == FW_Word)
@@ -3552,9 +3563,9 @@ static taddr oper_size(instruction *ip,operand *op,struct optype *ot)
 }
 
 
-static taddr iplist_size(instruction *ip)
+static size_t iplist_size(instruction *ip)
 {
-  taddr size = 0;
+  size_t size = 0;
   mnemonic *mnemo;
   int i;
 
@@ -3571,7 +3582,7 @@ static taddr iplist_size(instruction *ip)
 }
 
 
-taddr instruction_size(instruction *realip,section *sec,taddr pc)
+size_t instruction_size(instruction *realip,section *sec,taddr pc)
 /* Calculate the size of the current instruction; must be identical
    to the data created by eval_instruction. */
 {
@@ -3579,7 +3590,7 @@ taddr instruction_size(instruction *realip,section *sec,taddr pc)
   char ext = realip->qualifiers[0] ?
              tolower((unsigned char)realip->qualifiers[0][0]) : '\0';
   int i;
-  taddr size;
+  size_t size;
   instruction *ip;
   unsigned char extflags;
   uint16_t extsize;
@@ -3788,7 +3799,7 @@ static unsigned char *write_branch(dblock *db,unsigned char *d,operand *op,
 
   if (op->base[0]) {
 
-    if (op->base[0]->type == IMPORT || op->base[0]->sec!=sec) {
+    if (is_pc_reloc(op->base[0],sec)) {
       /* external branch label, or label from different section */
       taddr addend = op->extval[0];
       int size,offset;
@@ -3998,7 +4009,7 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
         taddr disp = op->extval[0];
 
         if (op->base[0]) {
-          if (op->base[0]->type==IMPORT || op->base[0]->sec!=sec) {
+          if (is_pc_reloc(op->base[0],sec)) {
             rtype = REL_PC;
             rsize = 16;
           }
@@ -4021,7 +4032,7 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
           roffs += 16;
           if (FW_getBDSize(op->format) == FW_Word) {
             if (op->base[0]) {
-              if (op->base[0]->type==IMPORT || op->base[0]->sec!=sec) {
+              if (is_pc_reloc(op->base[0],sec)) {
                 rtype = REL_PC;
                 rsize = 16;
                 op->extval[0] += 2;  /* pc-relative xref fix */
@@ -4036,7 +4047,7 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
           }
           else if (FW_getBDSize(op->format) == FW_Long) {
             if (op->base[0]) {
-              if (op->base[0]->type==IMPORT || op->base[0]->sec!=sec) {
+              if (is_pc_reloc(op->base[0],sec)) {
                 rtype = REL_PC;
                 rsize = 32;
                 op->extval[0] += 2;  /* pc-relative xref fix */
@@ -4071,7 +4082,7 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
         else {
           /* (d8,PC,Rn.x*s) needs one format word as extension */
           if (op->base[0]) {
-            if (op->base[0]->type==IMPORT || op->base[0]->sec!=sec) {
+            if (is_pc_reloc(op->base[0],sec)) {
               rtype = REL_PC;
               rsize = 8;
               roffs += 8;
@@ -4487,7 +4498,7 @@ eval_done:
 }
 
 
-dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
+dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 /* Create a dblock (with relocs, if necessary) for size bits of data. */
 {
   dblock *db = new_dblock();
@@ -4704,6 +4715,7 @@ int cpu_args(char *arg)
     no_symbols = 1;
     warn_opts = 2;
     ign_unambig_ext = 1;
+    unsigned_shift = 1;
     return 0;  /* leave option visible for syntax modules */
   }
 
@@ -4732,6 +4744,8 @@ int cpu_args(char *arg)
     no_opt = 1;
   }
 
+  else if (!strcmp(p,"-sc"))
+    opt_sc = 1;
   else if (!strcmp(p,"-rangewarnings"))
     modify_cpu_err(WARNING,25,29,32,36,0);
   else if (!strcmp(p,"-conv-brackets"))
@@ -5138,6 +5152,10 @@ char *parse_cpu_special(char *start)
         else
           cpu_error(58);  /* not a valid small data register */
       }
+      else if (*name!='.' && !strnicmp(s,"code",4)) {
+        add_cpu_opt(0,OCMD_SMALLCODE,1);
+        return skipline(s);
+      }
       else
         sdreg = last_sdreg;
       add_cpu_opt(0,OCMD_SDREG,sdreg);
@@ -5152,6 +5170,7 @@ char *parse_cpu_special(char *start)
         sdreg = -1;
         add_cpu_opt(0,OCMD_SDREG,sdreg);
       }
+      add_cpu_opt(0,OCMD_SMALLCODE,0);
       eol(s);
       return skipline(s);
     }

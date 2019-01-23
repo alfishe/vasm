@@ -124,10 +124,10 @@ parse_operand(char *p, int len, operand *op, int required)
 }
 
 
-static int
+static size_t
 eval_oper(operand *op, section *sec, taddr pc, taddr offs, dblock *db)
 {
-	int size = 0;
+	size_t size = 0;
         symbol *base = NULL;
         int btype;
 	taddr val;
@@ -155,7 +155,7 @@ eval_oper(operand *op, section *sec, taddr pc, taddr offs, dblock *db)
                 break;
 	    case IMM:
 		size = 1;
-		if (db != NULL && (val < -0x80 || val > 0xff))
+		if (db != NULL && !modifier && (val < -0x80 || val > 0xff))
 			cpu_error(1);  /* operand doesn't fit into 8-bits */
 		break;
 	    case EXT:
@@ -171,7 +171,7 @@ eval_oper(operand *op, section *sec, taddr pc, taddr offs, dblock *db)
 		/* create relocation entry and code for this operand */
 		if (base != NULL && btype == BASE_OK && op->type == REL) {
 			/* relative branches */
-			if (base->type == LABSYM && base->sec == sec) {
+			if (!is_pc_reloc(base, sec)) {
 				val = val - (pc + offs + 1);
 				if (val < -0x80 || val > 0x7f)
 					cpu_error(2); /* branch out of range */
@@ -188,11 +188,11 @@ eval_oper(operand *op, section *sec, taddr pc, taddr offs, dblock *db)
 					size << 3, offs << 3);
 			switch (modifier) {
 			    case LOBYTE:
-				((nreloc *)rl->reloc)->mask = 0xff;
+				if (rl) ((nreloc *)rl->reloc)->mask = 0xff;
 				val &= 0xff;
 				break;
 			    case HIBYTE:
-				((nreloc *)rl->reloc)->mask = 0xff00;
+				if (rl) ((nreloc *)rl->reloc)->mask = 0xff00;
 				val = (val >> 8) & 0xff;
 				break;
 			}
@@ -214,11 +214,12 @@ eval_oper(operand *op, section *sec, taddr pc, taddr offs, dblock *db)
 }
 
 
-taddr
+size_t
 instruction_size(instruction *ip, section *sec, taddr pc)
 {
 	operand op;
-	int i, size;
+	int i;
+	size_t size;
 
 	size = (mnemonics[ip->code].ext.prebyte != 0) ? 2 : 1;
 
@@ -227,7 +228,7 @@ instruction_size(instruction *ip, section *sec, taddr pc)
 		size += eval_oper(&op, sec, pc, size, NULL);
 	}
 
-	return (taddr)(size);
+	return (size);
 }
 
 
@@ -237,7 +238,8 @@ eval_instruction(instruction *ip, section *sec, taddr pc)
 	dblock *db = new_dblock();
 	uint8_t opcode;
 	uint8_t *d;
-	int i, size;
+	int i;
+	size_t size;
 
 	/* evaluate operands and determine instruction size */
 	opcode = mnemonics[ip->code].ext.opcode;
@@ -276,7 +278,7 @@ eval_instruction(instruction *ip, section *sec, taddr pc)
 }
 
 dblock *
-eval_data(operand *op, taddr bitsize, section *sec, taddr pc)
+eval_data(operand *op, size_t bitsize, section *sec, taddr pc)
 {
 	dblock *db = new_dblock();
 	uint8_t *d;
@@ -301,11 +303,11 @@ eval_data(operand *op, taddr bitsize, section *sec, taddr pc)
 			                bitsize, 0);
 			switch (modifier) {
 			    case LOBYTE:
-				((nreloc *)rl->reloc)->mask = 0xff;
+				if (rl) ((nreloc *)rl->reloc)->mask = 0xff;
 				val &= 0xff;
 				break;
 			    case HIBYTE:
-				((nreloc *)rl->reloc)->mask = 0xff00;
+				if (rl) ((nreloc *)rl->reloc)->mask = 0xff00;
 				val = (val >> 8) & 0xff;
 				break;
 			}
@@ -359,8 +361,6 @@ ext_find_base(symbol **base, expr *p, section *sec, taddr pc)
 		modifier = p->type;
 		return find_base(p->left,base,sec,pc);
 	}
-
-	modifier = 0;
 
 	return BASE_ILLEGAL;
 }

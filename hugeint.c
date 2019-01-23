@@ -1,4 +1,4 @@
-/* hugeint.c implements huge integer operations at 128 bits */
+  /* hugeint.c implements huge integer operations at 128 bits */
 /* (c) in 2014 by Frank Wille */
 
 #include <stdint.h>
@@ -253,6 +253,26 @@ int hcmp(thuge a,thuge b)
   if (c.hi == 0 && c.lo == 0)
     return 0;
   return HUGESIGN(c) ? -1 : 1;
+}
+
+
+thuge hshra(thuge a,int b)
+{
+  thuge r;
+
+  if (b >= HUGEBITS/2) {
+    r.hi = HUGESIGN(a) ? ~0 : 0;
+    r.lo = (int64_t)a.hi >> (b - HUGEBITS/2);
+  }
+  else if (b == 0) {
+    r.hi = a.hi;
+    r.lo = a.lo;
+  }
+  else {
+    r.hi = (int64_t)a.hi >> b;
+    r.lo = (a.hi << (HUGEBITS/2 - b)) | (a.lo >> b);
+  }
+  return r;
 }
 
 

@@ -1,5 +1,5 @@
 /* error.c - error output and modification routines */
-/* (c) in 2002-2013 by Volker Barthelmann and Frank Wille */
+/* (c) in 2002-2014 by Volker Barthelmann and Frank Wille */
 
 #include <stdarg.h>
 #include "vasm.h"
@@ -76,19 +76,21 @@ static void error(int n,va_list vl,struct err_out *errlist,int offset)
   if ((flags&DONTWARN) || ((flags&WARNING) && no_warn))
     return;
 
-  if (last_err_source) {
-    /* avoid printing the same error again and again, which might happen
-       when a line is evaluated in multiple passes */
-    if (cur_src!=NULL && cur_src==last_err_source &&
-       cur_src->line==last_err_line &&
-       n+offset==last_err_no)
-      return;
-  }
-
-  if ((flags&MESSAGE) && !(flags&(WARNING|ERROR|FATAL)))
+  if ((flags&MESSAGE) && !(flags&(WARNING|ERROR|FATAL))) {
     f = stdout;  /* print messages to stdout */
-  else
+  }
+  else {
     f = stderr;  /* otherwise stderr */
+
+    if (last_err_source) {
+      /* avoid printing the same error again and again, which might happen
+         when a line is evaluated in multiple passes */
+      if (cur_src!=NULL && cur_src==last_err_source &&
+         cur_src->line==last_err_line &&
+         n+offset==last_err_no)
+        return;
+    }
+  }
 
   if (cur_src) {
     last_err_source = cur_src;

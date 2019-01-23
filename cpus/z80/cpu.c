@@ -1234,10 +1234,10 @@ char *parse_cpu_special(char *start)
     return start;
 }
 
-taddr instruction_size(instruction *ip,  section *sec,taddr pc)
+size_t instruction_size(instruction *ip, section *sec, taddr pc)
 {
     mnemonic *opcode = &mnemonics[ip->code];
-    int       size;
+    size_t    size;
 
     /* Try and find the right opcode as necessary */
     if ( (opcode->ext.cpus & cpu_type)  ) {
@@ -1344,15 +1344,17 @@ taddr instruction_size(instruction *ip,  section *sec,taddr pc)
 
 
 
-static taddr apply_modifier(nreloc *reloc,taddr val)
+static taddr apply_modifier(rlist *rl, taddr val)
 {
     switch (modifier) {
     case LOBYTE:
-        reloc->mask = 0xff;
+        if (rl)
+            ((nreloc *)rl->reloc)->mask = 0xff;
         val = val & 0xff;
         break;
     case HIBYTE:
-        reloc->mask = 0xff00;
+        if (rl)
+            ((nreloc *)rl->reloc)->mask = 0xff00;
         val = (val >> 8) & 0xff;
         break;
     }
@@ -1493,7 +1495,7 @@ static void write_opcode(mnemonic *opcode, dblock *db, int size, section *sec, t
             if ( find_base(indexit->value, &base, sec, pc) == BASE_OK ) {
                 rl = add_nreloc(&db->relocs, base, val, REL_ABS, 8,
                                 cbmode ? ((d-1)-start)*8 : (d-start)*8);
-                val = apply_modifier((nreloc *)rl->reloc, val);
+                val = apply_modifier(rl, val);
             } else
                 general_error(38);  /* illegal relocation */
         }
@@ -1523,8 +1525,9 @@ static void write_opcode(mnemonic *opcode, dblock *db, int size, section *sec, t
                     if (modifier)
                         ierror(0);  /* @@@ Hi/Lo modifier makes no sense here? */
                 } else {
-                    rl = add_nreloc(&db->relocs, base, val, REL_ABS, exprsize * 8, (d - start) * 8);
-                    val = apply_modifier((nreloc *)rl->reloc, val);
+                    rl = add_nreloc(&db->relocs, base, val, REL_ABS,
+                                    exprsize * 8, (d - start) * 8);
+                    val = apply_modifier(rl, val);
                 }
                 
             } else {
@@ -1635,7 +1638,7 @@ static int is_offset_operand(operand *op)
     return 0;
 }
 
-dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
+dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 {
     dblock *db = new_dblock();
     taddr val;
@@ -1655,7 +1658,7 @@ dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
         if ( btype == BASE_OK || ( btype == BASE_PCREL && modifier == 0 ) ) {
             rl = add_nreloc(&db->relocs, base, val,
                             btype==BASE_PCREL ? REL_PC : REL_ABS, bitsize, 0);
-            val = apply_modifier((nreloc *)rl->reloc,val);
+            val = apply_modifier(rl, val);
         }
         else
             general_error(38);  /* illegal relocation */

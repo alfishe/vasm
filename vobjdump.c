@@ -71,7 +71,9 @@ static const char *type_name[] = {
 static ubyte *vobj;   /* base address of VOBJ buffer */
 static size_t vlen;   /* length of VOBJ file in buffer */
 static ubyte *p;      /* current object pointer */
+static taddr bptmask; /* mask LSB to fit bytes per taddr */
 
+#define BPTMASK(x) (unsigned long long)((x)&bptmask)
 
 
 static void print_sep(void)
@@ -152,10 +154,11 @@ static void read_section(struct vobj_section *vsect,
   vsect->fsize = read_number(0);
 
   print_sep();
-  printf("%08lx: SECTION \"%s\" (attributes=\"%s\")\n"
+  printf("%08llx: SECTION \"%s\" (attributes=\"%s\")\n"
          "Flags: %-8lx  Alignment: %-6d "
          "Total size: %-9lld File size: %-9lld\n",
-         vsect->offs,vsect->name,attr,flags,align,vsect->dsize,vsect->fsize);
+         BPTMASK(vsect->offs),vsect->name,attr,flags,align,
+         vsect->dsize,vsect->fsize);
   if (nrelocs)
     printf("%d Relocation%s present.\n",nrelocs,nrelocs==1?emptystr:sstr);
 
@@ -169,7 +172,7 @@ static void read_section(struct vobj_section *vsect,
       /* print header */
       printf("\nfile offs sectoffs pos sz mask     type     symbol+addend\n");
     }
-    printf("%08lx: ",(unsigned long)(p-vobj));
+    printf("%08llx: ",BPTMASK(p-vobj));
     type = (ubyte)read_number(0);
 
     if (type<sizeof(reloc_name)/sizeof(reloc_name[0])) {
@@ -186,7 +189,7 @@ static void read_section(struct vobj_section *vsect,
       sym = (int)read_number(0) - 1;  /* symbol index */
 
       if (offs<0 || offs>=vsect->dsize) {
-        printf("offset 0x%lx is outside of section!\n",(unsigned long)offs);
+        printf("offset 0x%llx is outside of section!\n",BPTMASK(offs));
         continue;
       }
       if (sym<0 || sym>=nsyms) {
@@ -207,8 +210,8 @@ static void read_section(struct vobj_section *vsect,
         basesym = vsect->name;
         /*addend += offs;*/
       }
-      printf("%08lx  %02d %02d %08lx %-8s %s%+lld\n",
-             (unsigned long)offs,bpos,bsiz,(unsigned long)mask,
+      printf("%08llx  %02d %02d %8llx %-8s %s%+lld\n",
+             BPTMASK(offs),bpos,bsiz,BPTMASK(mask),
              reloc_name[type],basesym,addend);
     }
     else {
@@ -280,6 +283,7 @@ static int vobjdump(void)
       fprintf(stderr,"%d bytes per taddr not supported!\n",bpt);
       return 1;
     }
+    bptmask = makemask(bpt*8);
 
     cpu_name = p;
     skip_string();  /* skip cpu-string */
@@ -329,10 +333,10 @@ static int vobjdump(void)
       }
       if (!strncmp(vs->name," *current pc",12))
         continue;
-      printf("%08lx: %-4s %08x %-4s %8.8s %08lx %s\n",
-             (unsigned long)vs->offs,bind_name(vs->flags),(unsigned)vs->size,
+      printf("%08llx: %-4s %08x %-4s %8.8s %8llx %s\n",
+             BPTMASK(vs->offs),bind_name(vs->flags),(unsigned)vs->size,
              type_name[TYPE(vs)],def_name(vs,vsect,nsecs),
-             (unsigned long)vs->val,vs->name);
+             BPTMASK(vs->val),vs->name);
     }
   }
   else {
@@ -384,7 +388,7 @@ int main(int argc,char *argv[])
       fprintf(stderr,"Cannot open \"%s\" for reading!\n",argv[1]);
   }
   else
-    fprintf(stderr,"vobjdump V0.2\nWritten by Frank Wille\n"
+    fprintf(stderr,"vobjdump V0.3\nWritten by Frank Wille\n"
             "Usage: %s <file name>\n",argv[0]);
 
   return rc;

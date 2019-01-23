@@ -180,6 +180,10 @@ This module provides the following additional options:
         This optimization will leave the flags unmodified, which might
         not be intended.
 
+    @item -sc
+        All @code{JMP} and @code{JSR} instructions to external labels
+        will be converted into 16-bit PC-relative jumps.
+
     @item -showcrit
         Print all critical optimizations which have side effects. Among
         those are @code{-opt-lsl}, @code{-opt-mul}, @code{-opt-st},
@@ -212,6 +216,7 @@ vasm performs the following optimizations:
         All options are initially set to be Devpac compatible. Which means
         that all optimizations are disabled, no debugging symbols will be
         written and vasm will warn about any optimization being done.
+        Shift-right operations are performed using an unsigned 32-bit value.
         Other options are the same as vasm's defaults.
         The symbol @code{__G2} is defined, which contains information
         about the selected cpu type.
@@ -388,6 +393,11 @@ directives:
       to @code{An}. @code{near} without an argument will reactivate a
       previously defined small data mode, which might be switched off
       by a @code{far} directive.
+
+@item near code
+      All @code{JMP} and @code{JSR} instructions to external labels
+      will be converted into 16-bit PC-relative jumps. The small code
+      mode can be switched off by a @code{far} directive.
 
 @item opt <option>[,<option>...]
       Sets Devpac-compatible options. When option @option{-phxass} is

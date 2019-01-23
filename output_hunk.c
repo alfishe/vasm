@@ -1,12 +1,13 @@
 /* output_hunk.c AmigaOS hunk format output driver for vasm */
-/* (c) in 2002-2012 by Frank Wille */
+/* (c) in 2002-2014 by Frank Wille */
 
 #include "vasm.h"
 #include "output_hunk.h"
 #if defined(VASM_CPU_M68K) || defined(VASM_CPU_PPC)
-static char *copyright="vasm hunk format output module 2.3 (c) 2002-2012 Frank Wille";
+static char *copyright="vasm hunk format output module 2.4 (c) 2002-2014 Frank Wille";
 
 static int databss = 0;
+static int kick1 = 0;
 static int exthunk;
 
 
@@ -133,14 +134,14 @@ static section *check_symbols(section *first_sec,symbol *sym)
 }
 
 
-static size_t prepare_sections(section *sec)
+static uint32_t prepare_sections(section *sec)
 /* assign an index to each section, delete empty ones,
    returns number of sections present */
 {
-  size_t cnt = 0;
+  uint32_t cnt = 0;
 
   for (; sec; sec=sec->next) {
-    if (get_sec_size(sec) > 0 || (sec->flags & HAS_SYMBOLS))
+    if (get_sec_size(sec)!=0 || (sec->flags & HAS_SYMBOLS))
       sec->idx = cnt++;
     else
       sec->flags |= SEC_DELETED;
@@ -149,15 +150,15 @@ static size_t prepare_sections(section *sec)
 }
 
 
-static taddr file_size(section *sec)
+static utaddr file_size(section *sec)
 /* determine a section's initialized data size, which occupies space in
    the executable file */
 {
-  taddr pc=0,zpc=0,npc;
+  utaddr pc=0,zpc=0,npc;
   atom *a;
 
   for (a=sec->first; a; a=a->next) {
-    int align = a->align;
+    taddr align = a->align;
     int zerodata = 1;
     char *d;
 
@@ -200,7 +201,7 @@ static taddr file_size(section *sec)
 }
 
 
-static struct hunkreloc *convert_reloc(rlist *rl,taddr pc)
+static struct hunkreloc *convert_reloc(rlist *rl,utaddr pc)
 {
   nreloc *r = (nreloc *)rl->reloc;
 
@@ -246,7 +247,7 @@ static struct hunkreloc *convert_reloc(rlist *rl,taddr pc)
               break;
 #endif
             case 32:
-              if ((r->offset&7) || r->mask!=-1)
+              if (kick1 || (r->offset&7) || r->mask!=-1)
                 return NULL;
               type = HUNK_RELRELOC32;
               break;
@@ -257,7 +258,7 @@ static struct hunkreloc *convert_reloc(rlist *rl,taddr pc)
         case REL_PPCEABI_SDA2: /* treat as REL_SD for WarpOS/EHF */
 #endif
         case REL_SD:
-          if (r->size!=16 || (r->offset&7) || r->mask!=-1)
+          if (kick1 || r->size!=16 || (r->offset&7) || r->mask!=-1)
             return NULL;
           type = HUNK_DREL16;
           break;
@@ -278,7 +279,7 @@ static struct hunkreloc *convert_reloc(rlist *rl,taddr pc)
 }
 
 
-static struct hunkxref *convert_xref(rlist *rl,taddr pc)
+static struct hunkxref *convert_xref(rlist *rl,utaddr pc)
 {
   nreloc *r = (nreloc *)rl->reloc;
 
@@ -299,10 +300,10 @@ static struct hunkxref *convert_xref(rlist *rl,taddr pc)
             return NULL;
           switch (r->size) {
             case 8:
-              type = EXT_ABSREF8;
+              type = kick1 ? EXT_RELREF8 : EXT_ABSREF8;
               break;
             case 16:
-              type = EXT_ABSREF16;
+              type = kick1 ? EXT_RELREF16 : EXT_ABSREF16;
               break;
             case 32:
               if (com) {
@@ -340,7 +341,7 @@ static struct hunkxref *convert_xref(rlist *rl,taddr pc)
               break;
 #endif
             case 32:
-              if ((r->offset&7) || r->mask!=-1)
+              if (kick1 || (r->offset&7) || r->mask!=-1)
                 return NULL;
               if (com) {
                 type = EXT_RELCOMMON;
@@ -356,7 +357,7 @@ static struct hunkxref *convert_xref(rlist *rl,taddr pc)
         case REL_PPCEABI_SDA2: /* treat as REL_SD for WarpOS/EHF */
 #endif
         case REL_SD:
-          if (r->size!=16 || (r->offset&7) || r->mask!=-1)
+          if (kick1 || r->size!=16 || (r->offset&7) || r->mask!=-1)
             return NULL;
           type = EXT_DEXT16;
           break;
@@ -379,7 +380,7 @@ static struct hunkxref *convert_xref(rlist *rl,taddr pc)
 
 
 static void process_relocs(rlist *rl,struct list *reloclist,
-                           struct list *xreflist,section *sec,taddr pc)
+                           struct list *xreflist,section *sec,utaddr pc)
 /* convert an atom's rlist into relocations and xrefs */
 {
   if (rl == NULL)
@@ -597,11 +598,10 @@ static void write_object(FILE *f,section *sec,symbol *sym)
 
         if ((type & ~HUNKF_MEMTYPE) != HUNK_BSS) {
           /* write contents */
-          taddr pc=0,npc;
-          int i;
+          utaddr pc=0,npc,i;
 
           for (a=sec->first; a; a=a->next) {
-            int align = a->align;
+            taddr align = a->align;
             rlist *rl;
 
             npc = ((pc + align-1) / align) * align;
@@ -622,7 +622,7 @@ static void write_object(FILE *f,section *sec,symbol *sym)
               struct hunkline *ldebug = mymalloc(sizeof(struct hunkline));
 
               ldebug->line = (uint32_t)a->content.srcline;
-              ldebug->offset = (uint32_t)npc;
+              ldebug->offset = npc;
               addtail(&linedblist,&ldebug->n);
               ++num_linedb;
             }
@@ -673,7 +673,7 @@ static void write_object(FILE *f,section *sec,symbol *sym)
 
 static void write_exec(FILE *f,section *sec,symbol *sym)
 {
-  size_t sec_cnt;
+  uint32_t sec_cnt;
   section *s;
 
   sec = check_symbols(sec,sym);
@@ -714,13 +714,12 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
 
         if (type != HUNK_BSS) {
           /* write contents */
-          taddr pc,npc,size;
-          int i;
+          utaddr pc,npc,size,i;
 
           size = databss ? file_size(sec) : get_sec_size(sec);
           fw32(f,(size+3)>>2,1);
           for (a=sec->first,pc=0; a!=NULL&&pc<size; a=a->next) {
-            int align = a->align;
+            taddr align = a->align;
             rlist *rl;
 
             npc = ((pc + align-1) / align) * align;
@@ -739,7 +738,7 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
               struct hunkline *ldebug = mymalloc(sizeof(struct hunkline));
 
               ldebug->line = (uint32_t)a->content.srcline;
-              ldebug->offset = (uint32_t)npc;
+              ldebug->offset = npc;
               addtail(&linedblist,&ldebug->n);
               ++num_linedb;
             }
@@ -776,9 +775,21 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
 }
 
 
+static int common_args(char *p)
+{
+#if defined(VASM_CPU_M68K)
+  if (!strcmp(p,"-kick1hunks")) {
+    kick1 = 1;
+    return 1;
+  }
+#endif
+  return 0;
+}
+
+
 static int object_args(char *p)
 {
-  return 0;
+  return common_args(p);
 }
 
 
@@ -788,7 +799,7 @@ static int exec_args(char *p)
     databss = 1;
     return 1;
   }
-  return 0;
+  return common_args(p);
 }
 
 

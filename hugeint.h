@@ -34,6 +34,7 @@ thuge haddi(thuge,int64_t);
 thuge hadd(thuge,thuge);
 thuge hsub(thuge,thuge);
 int hcmp(thuge,thuge);
+thuge hshra(thuge,int);
 thuge hshr(thuge,int);
 thuge hshl(thuge,int);
 thuge hmuli(thuge,int64_t);

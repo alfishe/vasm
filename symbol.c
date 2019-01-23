@@ -34,7 +34,7 @@ void print_symbol(FILE *f,symbol *p)
   fprintf(f,"%s ",p->name);
 
   if (p->type==LABSYM)
-    fprintf(f,"LAB (0x%llx) ",UNS_TADDR(p->pc));
+    fprintf(f,"LAB (0x%llx) ",ULLTADDR(p->pc));
   if (p->type==IMPORT)
     fprintf(f,"IMP ");
   if (p->type==EXPRESSION){

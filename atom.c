@@ -137,7 +137,7 @@ dblock *new_dblock(void)
 }
 
 
-sblock *new_sblock(expr *space,int size,expr *fill)
+sblock *new_sblock(expr *space,size_t size,expr *fill)
 {
   sblock *sb = mymalloc(sizeof(sblock));
 
@@ -151,9 +151,9 @@ sblock *new_sblock(expr *space,int size,expr *fill)
 }
 
 
-static taddr space_size(sblock *sb,section *sec,taddr pc)
+static size_t space_size(sblock *sb,section *sec,taddr pc)
 {
-  taddr space=0;
+  utaddr space=0;
 
   if (eval_expr(sb->space_exp,&space,sec,pc) || !final_pass)
     sb->space = space;
@@ -164,7 +164,8 @@ static taddr space_size(sblock *sb,section *sec,taddr pc)
     if (sb->size <= sizeof(taddr)) {
       /* space is filled with an expression which may also need relocations */
       symbol *base=NULL;
-      taddr fill,i;
+      taddr fill;
+      utaddr i;
 
       if (!eval_expr(sb->fill_exp,&fill,sec,pc)) {
         if (find_base(sb->fill_exp,&base,sec,pc)==BASE_ILLEGAL)
@@ -175,18 +176,18 @@ static taddr space_size(sblock *sb,section *sec,taddr pc)
         /* generate relocations */
         for (i=0; i<space; i++)
           add_nreloc(&sb->relocs,base,fill,REL_ABS,
-                     sb->size<<3,(i*sb->size)<<3);
+                     sb->size<<3,(sb->size*i)<<3);
       }
     }
     else
       general_error(30);  /* expression must be constant */
   }
 
-  return space * (taddr)sb->size;
+  return sb->size * space;
 }
 
 
-static taddr roffs_size(expr *offsexp,section *sec,taddr pc)
+static size_t roffs_size(expr *offsexp,section *sec,taddr pc)
 {
   taddr offs;
 
@@ -244,7 +245,7 @@ void add_atom(section *sec,atom *a)
 }
 
 
-taddr atom_size(atom *p,section *sec,taddr pc)
+size_t atom_size(atom *p,section *sec,taddr pc)
 {
   switch(p->type) {
     case LABEL:
@@ -339,7 +340,7 @@ void print_atom(FILE *f,atom *p)
       print_expr(f,p->content.roffs);
       break;
     case RORG:
-      fprintf(f,"rorg: relocate to 0x%llx",UNS_TADDR(*p->content.rorg));
+      fprintf(f,"rorg: relocate to 0x%llx",ULLTADDR(*p->content.rorg));
       break;
     case RORGEND:
       fprintf(f,"rorg end");
@@ -422,7 +423,7 @@ atom *new_label_atom(symbol *p)
 }
 
 
-atom *new_space_atom(expr *space,int size,expr *fill)
+atom *new_space_atom(expr *space,size_t size,expr *fill)
 {
   atom *new = mymalloc(sizeof(*new));
   int i;
@@ -437,7 +438,7 @@ atom *new_space_atom(expr *space,int size,expr *fill)
 }  
 
 
-atom *new_datadef_atom(taddr bitsize,operand *op)
+atom *new_datadef_atom(size_t bitsize,operand *op)
 {
   atom *new = mymalloc(sizeof(*new));
   new->next = 0;

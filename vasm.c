@@ -6,7 +6,7 @@
 
 #include "vasm.h"
 
-#define _VER "vasm 1.7"
+#define _VER "vasm 1.7a"
 char *copyright = _VER " (c) in 2002-2014 Volker Barthelmann";
 #ifdef AMIGA
 static const char *_ver = "$VER: " _VER " " __AMIGADATE__ "\r\n";
@@ -129,7 +129,7 @@ static void resolve_section(section *sec)
   int fastphase=FASTOPTPHASE;
   int pass=0;
   int extrapass;
-  taddr size;
+  size_t size;
   atom *p;
 
   do{
@@ -194,8 +194,9 @@ static void resolve_section(section *sec)
         size=atom_size(p,sec,sec->pc);
       if(size!=p->lastsize){
         if(debug)
-          printf("modify size of atom type %d at %lu from %ld to %ld\n",
-                 p->type,(unsigned long)sec->pc,(long)p->lastsize,(long)size);
+          printf("modify size of atom type %d at %lu from %lu to %lu\n",
+                 p->type,(unsigned long)sec->pc,(unsigned long)p->lastsize,
+                 (unsigned long)size);
         done=0;
         if(pass>fastphase)
           p->changes++;  /* now count size modifications of atoms */
@@ -399,7 +400,7 @@ static void statistics(void)
 
   printf("\n");
   for(sec=first_section;sec;sec=sec->next){
-    size=UNS_TADDR(UNS_TADDR(sec->pc)-UNS_TADDR(sec->org));
+    size=ULLTADDR(ULLTADDR(sec->pc)-ULLTADDR(sec->org));
     printf("%s(%s%lu):\t%12llu byte%c\n",sec->name,sec->attr,
            (unsigned long)sec->align,size,size==1?' ':'s');
   }
@@ -525,6 +526,7 @@ int main(int argc,char **argv)
         general_error(28,'L');
       listname=argv[++i];
       produce_listing=1;
+      set_listing(1);
       continue;
     }
     if(!strcmp("-Lnf",argv[i])){
@@ -616,6 +618,10 @@ int main(int argc,char **argv)
       sscanf(argv[i]+14,"%i",&maxmacrecurs);
       continue;
     }
+    else if(!strcmp("-unsshift",argv[i])){
+      unsigned_shift=1;
+      continue;
+    }
     if(cpu_args(argv[i]))
       continue;
     if(syntax_args(argv[i]))
@@ -649,6 +655,7 @@ int main(int argc,char **argv)
     resolve();
   if(errors==0||produce_listing)
     assemble();
+  cur_src=NULL;
   if(!auto_import)
     undef_syms();
   label_expressions();
@@ -841,7 +848,7 @@ void new_org(taddr org)
   char buf[16];
   section *sec;
 
-  sprintf(buf,"seg%llx",UNS_TADDR(org));
+  sprintf(buf,"seg%llx",ULLTADDR(org));
   sec = new_section(buf,"acrwx",1);
   sec->org = sec->pc = org;
   sec->flags |= ABSOLUTE;  /* absolute destination address */
@@ -909,10 +916,10 @@ void print_section(FILE *f,section *sec)
   atom *p;
   taddr pc=sec->org;
   fprintf(f,"section %s (attr=<%s> align=%llu):\n",
-          sec->name,sec->attr,UNS_TADDR(sec->align));
+          sec->name,sec->attr,ULLTADDR(sec->align));
   for(p=sec->first;p;p=p->next){
     pc=(pc+p->align-1)/p->align*p->align;
-    fprintf(f,"%8llx: ",UNS_TADDR(pc));
+    fprintf(f,"%8llx: ",ULLTADDR(pc));
     print_atom(f,p);
     fprintf(f,"\n");
     pc+=atom_size(p,sec,pc);

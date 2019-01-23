@@ -552,7 +552,7 @@ static void create_mapping_symbol(int type,section *sec,taddr pc)
 }
 
 
-taddr eval_thumb_operands(instruction *ip,section *sec,taddr pc,
+size_t eval_thumb_operands(instruction *ip,section *sec,taddr pc,
                           uint16_t *insn,dblock *db)
 /* evaluate expressions and try to optimize THUMB instruction,
    return size of instruction */
@@ -560,7 +560,7 @@ taddr eval_thumb_operands(instruction *ip,section *sec,taddr pc,
   operand op;
   mnemonic *mnemo = &mnemonics[ip->code];
   int opcnt = 0;
-  taddr isize = 2;
+  size_t isize = 2;
 
   if (insn) {
     if (pc & 1)
@@ -591,7 +591,7 @@ taddr eval_thumb_operands(instruction *ip,section *sec,taddr pc,
     if (op.type==TPCLW || THBRANCH(op.type)) {
       /* PC-relative offsets (take prefetch into account: PC+4) */
       if (base!=NULL && btype==BASE_OK) {
-        if (base->type==LABSYM && base->sec==sec) {
+        if (!is_pc_reloc(base,sec)) {
           /* no relocation required, can be resolved immediately */
           if (op.type == TPCLW) {
             /* bit 1 of PC is forced to 0 */
@@ -990,8 +990,8 @@ static int get_addrmode(instruction *ip)
 }
 
 
-taddr eval_arm_operands(instruction *ip,section *sec,taddr pc,
-                        uint32_t *insn,dblock *db)
+size_t eval_arm_operands(instruction *ip,section *sec,taddr pc,
+                         uint32_t *insn,dblock *db)
 /* evaluate expressions and try to optimize ARM instruction,
    return size of instruction */
 {
@@ -1000,7 +1000,7 @@ taddr eval_arm_operands(instruction *ip,section *sec,taddr pc,
   int am = get_addrmode(ip);
   int aa4ldst = 0;
   int opcnt = 0;
-  taddr isize = 4;
+  size_t isize = 4;
   taddr chkreg = -1;
 
   if (insn) {
@@ -1072,7 +1072,7 @@ taddr eval_arm_operands(instruction *ip,section *sec,taddr pc,
         op.type==PCLCP || op.type==BRA24) {
       /* PC-relative offsets (take prefetch into account: PC+8) */
       if (base!=NULL && btype==BASE_OK) {
-        if (base->type==LABSYM && base->sec==sec) {
+        if (!is_pc_reloc(base,sec)) {
           /* no relocation required, can be resolved immediately */
           val -= pc + 8;
 
@@ -1491,7 +1491,7 @@ taddr eval_arm_operands(instruction *ip,section *sec,taddr pc,
 }
 
 
-taddr instruction_size(instruction *ip,section *sec,taddr pc)
+size_t instruction_size(instruction *ip,section *sec,taddr pc)
 /* Calculate the size of the current instruction; must be identical
    to the data created by eval_instruction. */
 {
@@ -1547,7 +1547,7 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
 }
 
 
-dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
+dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 /* Create a dblock (with relocs, if necessary) for size bits of data. */
 {
   dblock *db = new_dblock();

@@ -99,6 +99,12 @@ or additional options.
         section with a different name but same attributes as a first one,
         it will switch to the first, instead of starting a new section.
 
+@item -unsshift
+        The shift-right operator (@code{>>}) treats the value to shift as
+        unsigned, which has the effect that 0-bits are inserted on the
+        left side. The number of bits in a value depend on the target
+        address type (refer to the appropriate cpu module documentation).
+
 @item -w
         Hide all warning messages.
 

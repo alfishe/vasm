@@ -34,21 +34,21 @@ typedef struct instruction {
 } instruction;  
 
 typedef struct defblock {
-  taddr bitsize;
+  size_t bitsize;
   operand *op;
 } defblock;
 
 struct dblock {
-  taddr size;
+  size_t size;
   char *data;
   rlist *relocs;
 };
 
 #define SB_MAXSIZE 8
 struct sblock {
-  taddr space;
+  size_t space;
   expr *space_exp;  /* copied to space, when evaluated as constant */
-  int size;
+  size_t size;
   unsigned char fill[SB_MAXSIZE];
   expr *fill_exp;   /* copied to fill, when evaluated - may be NULL */
   rlist *relocs;
@@ -65,7 +65,7 @@ typedef struct atom {
   struct atom *next;
   int type;
   taddr align;
-  taddr lastsize;
+  size_t lastsize;
   unsigned changes;
   source *src;
   int line;
@@ -90,18 +90,18 @@ typedef struct atom {
 
 instruction *new_inst(char *inst,int len,int op_cnt,char **op,int *op_len);
 dblock *new_dblock();
-sblock *new_sblock(expr *,int,expr *);
+sblock *new_sblock(expr *,size_t,expr *);
 
 void add_atom(section *,atom *);
-taddr atom_size(atom *,section *,taddr);
+size_t atom_size(atom *,section *,taddr);
 void print_atom(FILE *,atom *);
 atom *clone_atom(atom *);
 
 atom *new_inst_atom(instruction *);
 atom *new_data_atom(dblock *,taddr);
 atom *new_label_atom(symbol *);
-atom *new_space_atom(expr *,int,expr *);
-atom *new_datadef_atom(taddr,operand *);
+atom *new_space_atom(expr *,size_t,expr *);
+atom *new_datadef_atom(size_t,operand *);
 atom *new_srcline_atom(int);
 atom *new_opts_atom(void *);
 atom *new_text_atom(char *);

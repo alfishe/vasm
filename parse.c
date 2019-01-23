@@ -181,10 +181,10 @@ char *parse_identifier(char **s)
 }
 
 
-char *skip_string(char *s,char delim,taddr *size)
+char *skip_string(char *s,char delim,size_t *size)
 /* skip a string, optionally store the size in bytes in size, when not NULL */
 {
-  taddr n = 0;
+  size_t n = 0;
   char c;
 
   if (*s != delim)
@@ -217,7 +217,7 @@ char *skip_string(char *s,char delim,taddr *size)
 
 dblock *parse_string(char **str,char delim,int width)
 {
-  taddr size;
+  size_t size;
   dblock *db;
   char *p,c;
   char *s = *str;
@@ -232,7 +232,7 @@ dblock *parse_string(char **str,char delim,int width)
     return NULL; /* it's just one char, so use eval_expr() on it */
 
   db = new_dblock();
-  db->size = size * width;
+  db->size = size * (size_t)width;
   db->data = db->size ? mymalloc(db->size) : NULL;
 
   /* now copy the string for real into the dblock */
@@ -296,14 +296,14 @@ void include_binary_file(char *inname,long nbskip,unsigned long nbkeep)
 
   filename = convert_path(inname);
   if (f = locate_file(filename,"rb")) {
-    taddr size = filesize(f);
+    size_t size = filesize(f);
 
     if (size > 0) {
       if (nbskip>=0 && nbskip<=size) {
         dblock *db = new_dblock();
 
         if (nbkeep > (unsigned long)(size - nbskip) || nbkeep==0)
-          db->size = size - nbskip;
+          db->size = size - (size_t)nbskip;
         else
           db->size = nbkeep;
 
@@ -424,18 +424,24 @@ macro *new_macro(char *name,struct namelen *endmlist,char *args)
   macro *m = NULL;
 
   if (cur_macro==NULL && cur_src!=NULL && enddir_list==NULL) {
-    if (find_name_nc(mnemohash,name,&data))
-      general_error(51);  /* name conflicts with mnemonic */
-    if (find_name_nc(dirhash,name,&data))
-      general_error(52);  /* name conflicts with directive */
-
     m = mymalloc(sizeof(macro));
     m->name = mystrdup(name);
     if (nocase_macros)
       strtolower(m->name);
-    m->text = cur_src->srcptr;
     m->argnames = NULL;
     m->recursions = 0;
+
+    if (find_name_nc(mnemohash,name,&data)) {
+      m->text = NULL;
+      general_error(51);  /* name conflicts with mnemonic */
+    }
+    else if (find_name_nc(dirhash,name,&data)) {
+      m->text = NULL;
+      general_error(52);  /* name conflicts with directive */
+    }
+    else
+      m->text = cur_src->srcptr;
+
     cur_macro = m;
     enddir_list = endmlist;
     enddir_minlen = dirlist_minlen(endmlist);
@@ -650,13 +656,15 @@ static void start_repeat(char *rept_end)
 static void add_macro(void)
 {
   if (cur_macro!=NULL && cur_src!=NULL) {
-    hashdata data;
+    if (cur_macro->text != NULL) {
+      hashdata data;
 
-    cur_macro->size = cur_src->srcptr - cur_macro->text;
-    cur_macro->next = first_macro;
-    first_macro = cur_macro;
-    data.ptr = cur_macro;
-    add_hashentry(macrohash,cur_macro->name,data);
+      cur_macro->size = cur_src->srcptr - cur_macro->text;
+      cur_macro->next = first_macro;
+      first_macro = cur_macro;
+      data.ptr = cur_macro;
+      add_hashentry(macrohash,cur_macro->name,data);
+    }
     cur_macro = NULL;
   }
   else

@@ -38,8 +38,8 @@ void conv2ieee64(int,uint8_t *,tfloat);
 void conv2ieee80(int,uint8_t *,tfloat);
 void conv2ieee128(int,uint8_t *,tfloat);
 
-void fw8(FILE *,unsigned char);
-void fw32(FILE *,unsigned long,int);
+void fw8(FILE *,uint8_t);
+void fw32(FILE *,uint32_t,int);
 void fwdata(FILE *,void *,size_t);
 void fwalign(FILE *,taddr,taddr);
 int fwsblock(FILE *,sblock *);
@@ -57,6 +57,6 @@ taddr palign(taddr,taddr);
 
 taddr get_sym_value(symbol *);
 taddr get_sym_size(symbol *);
-taddr get_sec_size(section *);
+utaddr get_sec_size(section *);
 
 #endif

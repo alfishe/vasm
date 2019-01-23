@@ -1,6 +1,45 @@
 vasm history
 =============
 
+- 1.7a (25.08.14)
+o Addend for "external_label-current_section_label" PC-relative relocation
+  was not calculated correctly.
+o Do not generate relocations with absolute ORG sections. External
+  references from such a section are illegal.
+o Fixed PC-relative references between absolute ORG sections.
+o Defining a macro with the same name as a directive or mnemonic no longer
+  causes and error, but a warning. Like most other assemblers vasm will
+  ignore this macro definition.
+o New option -unsshift to make right-shift operations unsigned (logical),
+  depending on the CPU's target address type.
+o Fixed some problems caused by signed sizes and section offsets.
+o Fixed -x option again. It only printed the first undefined symbol.
+o When specifying a listing file with -L <name> the source was not
+  included. The default is now to include it. Can still be controlled
+  by list/nolist directives.
+o Allow printing of multiple optimization messages for a single source
+  line (-showopt).
+o Fixed infinite loop with huge octal and binary values, which got a decimal
+  point or exponent.
+o Automatically rearrange nodes from "const-symbol-symbol", so that
+  "symbol-symbol" is evaluated first, as it may yield a constant.
+o Fix compiling with pre MSVC 2013 versions (missing strtold()).
+o m68k: -opt-fconst, which is enabled in vasm-default mode since 1.6a,
+  was broken for double to single precision conversions, as it moved
+  following labels by 4 bytes.
+o m68k: -devpac compatibility includes unsigned right-shifts.
+o m68k: NEAR CODE from PhxAss is supported and translates all absolute
+  JMP/JSR with an external symbol into 16-bit PC-relative addressing mode.
+o m68k: New option -sc to set small code mode (same as NEAR CODE directive).
+o mot-syntax: SECTION with a single argument defaults to a code section,
+  except when the name is "data" or "bss".
+o output-hunk: New option -kick1hunks to use only those hunk types and
+  external reference types which have been valid at the time of Kickstart
+  1.x for compatibility with old assembler sources and old linkers.
+o output-tos: A 16-bit aligned section size must also show up in the header.
+o output-tos: New option -monst for writing Devpac MonST-compatible
+  symbols.
+
 - 1.7 (02.07.14)
 o Labels in an absolute ORG section have no longer any restrictions
   regarding arithmetic and logical operations on them.

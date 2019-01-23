@@ -303,7 +303,7 @@ static int32_t eval_oper(instruction *ip,operand *op,section *sec,
         loval = -16;
         hival = 15;
         if (base!=NULL && btype==BASE_OK) {
-          if (base->type==IMPORT || base->sec!=sec) {
+          if (is_pc_reloc(base,sec)) {
             /* external label or from a different section */
             add_nreloc(&db->relocs,base,val,REL_PC,5,11);
           }
@@ -329,7 +329,7 @@ static int32_t eval_oper(instruction *ip,operand *op,section *sec,
 }
 
 
-taddr instruction_size(instruction *ip, section *sec, taddr pc)
+size_t instruction_size(instruction *ip, section *sec, taddr pc)
 {
   return ip->code==OC_MOVEI ? 6 : 2;
 }
@@ -403,7 +403,7 @@ dblock *eval_instruction(instruction *ip, section *sec, taddr pc)
 }
 
 
-dblock *eval_data(operand *op, taddr bitsize, section *sec, taddr pc)
+dblock *eval_data(operand *op, size_t bitsize, section *sec, taddr pc)
 {
   dblock *db = new_dblock();
   taddr val;

@@ -348,14 +348,14 @@ void conv2ieee128(int be,uint8_t *buf,tfloat f)
 }
 
 
-void fw8(FILE *f,unsigned char x)
+void fw8(FILE *f,uint8_t x)
 {
   if (fputc(x,f) == EOF)
     output_error(2);  /* write error */
 }
 
 
-void fw32(FILE *f,unsigned long x,int be)
+void fw32(FILE *f,uint32_t x,int be)
 {
   if (be) {
     fw8(f,(x>>24) & 0xff);
@@ -392,7 +392,7 @@ void fwalign(FILE *f,taddr n,taddr align)
 
 int fwsblock(FILE *f,sblock *sb)
 {
-  taddr i;
+  size_t i;
 
   for(i=0;i<sb->space;i++){
     if(!fwrite(sb->fill,sb->size,1,f))
@@ -569,9 +569,9 @@ taddr get_sym_size(symbol *s)
 }
 
 
-taddr get_sec_size(section *sec)
+utaddr get_sec_size(section *sec)
 {
   /* section size is assumed to be in in (sec->pc - sec->org), otherwise
      we would have to calculate it from the atoms and store it there */
-  return sec ? sec->pc - sec->org : 0;
+  return sec ? (utaddr)sec->pc - (utaddr)sec->org : 0;
 }

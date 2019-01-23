@@ -382,10 +382,9 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
           op->mode = OPM_NONE;
       }
 
-      if (reloctype == REL_PC) {
+      if (reloctype == REL_PC && !is_pc_reloc(base,sec)) {
         /* a relative branch - reloc is only needed for external reference */
-        if (base->type==LABSYM && base->sec==sec)
-          return val-pc;
+        return val-pc;
       }
 
       /* determine reloc size, offset and mask */
@@ -555,13 +554,13 @@ static uint32_t insertcode(uint32_t i,taddr val,
 }
 
 
-taddr eval_operands(instruction *ip,section *sec,taddr pc,
-                    uint32_t *insn,dblock *db)
+size_t eval_operands(instruction *ip,section *sec,taddr pc,
+                     uint32_t *insn,dblock *db)
 /* evaluate expressions and try to optimize instruction,
    return size of instruction */
 {
   mnemonic *mnemo = &mnemonics[ip->code];
-  taddr isize = 4;
+  size_t isize = 4;
   int i,j,omitted;
   operand op;
 
@@ -693,7 +692,7 @@ taddr eval_operands(instruction *ip,section *sec,taddr pc,
 }
 
 
-taddr instruction_size(instruction *ip,section *sec,taddr pc)
+size_t instruction_size(instruction *ip,section *sec,taddr pc)
 /* Calculate the size of the current instruction; must be identical
    to the data created by eval_instruction. */
 {
@@ -725,7 +724,7 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
 }
 
 
-dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
+dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 /* Create a dblock (with relocs, if necessary) for size bits of data. */
 {
   dblock *db = new_dblock();

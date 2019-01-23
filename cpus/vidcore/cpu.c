@@ -20,7 +20,7 @@ static char *ccs[]={"eq","ne","cs","cc","mi","pl","vs","vc",
 
 static char *vflags[]={"all","none","ifz","ifnz","ifn","ifnn","ifc","ifnc"};
 
-static int oplen(int op)
+static size_t oplen(int op)
 {
   if(op<=EN_MEMDISP16)
     return 2;
@@ -892,7 +892,7 @@ dblock *eval_instruction(instruction *p,section *sec,taddr pc)
 }
 
 /* Create a dblock (with relocs, if necessary) for size bits of data. */
-dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
+dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 {
   dblock *new=new_dblock();
   taddr val;
@@ -919,7 +919,7 @@ dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
 
 /* Calculate the size of the current instruction; must be identical
    to the data created by eval_instruction. */
-taddr instruction_size(instruction *p,section *sec,taddr pc)
+size_t instruction_size(instruction *p,section *sec,taddr pc)
 {
   int c;
   c=translate(p,sec,pc);

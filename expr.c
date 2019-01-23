@@ -4,6 +4,7 @@
 #include "vasm.h"
 
 char current_pc_char='$';
+int unsigned_shift;
 static char *s;
 static symbol *cpc;
 static int make_tmp_lab;
@@ -128,8 +129,8 @@ static expr *primary_expr(void)
       if(base<=10){
         while(*s>='0'&&*s<base+'0')
           huge=haddi(hmuli(huge,base),*s++-'0');
-        if(*s=='e'||*s=='E'||
-           (*s=='.'&&*(s+1)>='0'&&*(s+1)<='9'))
+        if(base==10&&(*s=='e'||*s=='E'||
+                      (*s=='.'&&*(s+1)>='0'&&*(s+1)<='9')))
           goto fltval;  /* decimal point or exponent: read floating point */
       }else if(base==16){
         while((*s>='0'&&*s<='9')||(*s>='a'&&*s<='f')||(*s>='A'&&*s<='F')){
@@ -284,7 +285,7 @@ static expr *shift_expr()
     if(m=='<')
       new->type=LSH;
     else
-      new->type=RSH;
+      new->type=unsigned_shift?RSHU:RSH;
     new->left=left;
     new->right=unary_expr();
     left=new;
@@ -589,6 +590,16 @@ void simplify_expr(expr *tree)
     return;
   simplify_expr(tree->left);
   simplify_expr(tree->right);
+  if(tree->type==SUB&&tree->right->type==SYM&&tree->left->type==SUB&&
+     tree->left->left->type!=SYM&&tree->left->right->type==SYM){
+    /* Rearrange nodes from "const-symbol-symbol", so that "symbol-symbol"
+       is evaluated first, as it may yield a constant. */
+    expr *x=tree->right;
+    tree->right=tree->left;
+    tree->left=tree->right->left;
+    tree->right->left=tree->right->right;
+    tree->right->right=x;
+  }
   if(tree->left){
     if(tree->left->type==NUM||tree->left->type==HUG||tree->left->type==FLT)
       type=tree->left->type;
@@ -653,6 +664,9 @@ void simplify_expr(expr *tree)
       ival=(tree->left->c.val<<tree->right->c.val);
       break;
     case RSH:
+      ival=(tree->left->c.val>>tree->right->c.val);
+      break;
+    case RSHU:
       ival=((utaddr)tree->left->c.val>>tree->right->c.val);
       break;
     case LT:
@@ -749,6 +763,9 @@ void simplify_expr(expr *tree)
       hval=hshl(lval,huge_to_int(rval));
       break;
     case RSH:
+      hval=hshra(lval,huge_to_int(rval));
+      break;
+    case RSHU:
       hval=hshr(lval,huge_to_int(rval));
       break;
     case LT:
@@ -868,7 +885,7 @@ void simplify_expr(expr *tree)
   tree->left=tree->right=NULL;
   switch(tree->type=type){
     case NUM: tree->c.val=ival; break;
-    case HUG: tree->c.huge=hval; return;
+    case HUG: tree->c.huge=hval; break;
     case FLT: tree->c.flt=fval; break;
     default: ierror(0); break;
   }
@@ -898,19 +915,25 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
   case SUB:
     find_base(tree->left,&lsym,sec,pc);
     find_base(tree->right,&rsym,sec,pc);
-    /* l2-l1 is constant when both have a valid symbol-base, and both
-       symbols are LABSYMs from the same section, e.g. (sym1+x)-(sym2-y) */
-    if(cnst==0&&lsym!=NULL&&rsym!=NULL)
-       cnst=lsym->type==LABSYM&&rsym->type==LABSYM&&lsym->sec==rsym->sec;
-    /* Difference between symbols from different section or between an
-       external symbol and a symbol from the current section can be
-       represented by a REL_PC, so we calculate the addend. */
-    if(lsym!=NULL&&rsym!=NULL&&rsym->type==LABSYM&&
-       rsym->sec==sec&&lsym->sec!=NULL&&
-       ((lsym->type==LABSYM&&lsym->sec!=rsym->sec)||lsym->type==IMPORT))
-      val=(pc-rval+lval-lsym->sec->org);
-    else
-      val=(lval-rval);
+    if(cnst==0&&lsym!=NULL&&rsym!=NULL&&rsym->type==LABSYM){
+      if(lsym->type==LABSYM&&lsym->sec==rsym->sec){
+        /* l2-l1 is constant when both have a valid symbol-base, and both
+           symbols are LABSYMs from the same section, e.g. (sym1+x)-(sym2-y) */
+        cnst=1;
+      }else if(rsym->sec==sec&&(lsym->type==IMPORT||lsym->type==LABSYM)){
+        /* Difference between symbols from different section or between an
+           external symbol and a symbol from the current section can be
+           represented by a REL_PC, so we calculate the addend. */
+        if((sec->flags&ABSOLUTE)&&lsym->sec!=NULL&&(lsym->sec->flags&ABSOLUTE))
+          cnst=1;  /* constant, when labels are from two ORG sections */
+        else{
+          /* prepare a value which works with REL_PC */
+          val=(pc-rval+lval-(lsym->sec?lsym->sec->org:0));
+          break;
+        }
+      }
+    }
+    val=(lval-rval);
     break;
   case MUL:
     val=(lval*rval);
@@ -957,6 +980,9 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
     val=(lval<<rval);
     break;
   case RSH:
+    val=(lval>>rval);
+    break;
+  case RSHU:
     val=((utaddr)lval>>rval);
     break;
   case LT:
@@ -1084,7 +1110,10 @@ int eval_expr_huge(expr *tree,thuge *result)
   case LSH:
     val=hshl(lval,huge_to_int(rval));
     break;
-    case RSH:
+  case RSH:
+    val=hshra(lval,huge_to_int(rval));
+    break;
+  case RSHU:
     val=hshr(lval,huge_to_int(rval));
     break;
   case LT:
@@ -1250,6 +1279,12 @@ static int find_abs_base(expr *tree,symbol **base)
         *base=tree->c.sym;
         return 1;
       }
+    }else{
+      if(current_section!=NULL&&(current_section->flags&ABSOLUTE)){
+        /* IMPORT in ORG section, will be flagged as BASE_ILLEGAL */
+        *base=tree->c.sym;
+        return 1;
+      }
     }
     return 0;
   }
@@ -1321,8 +1356,9 @@ int find_base(expr *p,symbol **base,section *sec,taddr pc)
   if(base){
     *base=NULL;
     if(find_abs_base(p,base)){
+        /* a base label from an absolute ORG section */
       if(*base!=NULL)
-        return BASE_OK;  /* a base label from an absolute ORG section */
+        return (*base)->type==IMPORT?BASE_ILLEGAL:BASE_OK;
     }
   }
   return _find_base(p,base,sec,pc);

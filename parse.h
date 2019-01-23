@@ -37,7 +37,7 @@ char *escape(char *,char *);
 char *parse_name(char **);
 char *skip_identifier(char *);
 char *parse_identifier(char **);
-char *skip_string(char *,char,taddr *);
+char *skip_string(char *,char,size_t *);
 dblock *parse_string(char **,char,int);
 int check_indir(char *,char *);
 void include_binary_file(char *,long,unsigned long);

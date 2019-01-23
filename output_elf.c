@@ -14,7 +14,7 @@ static struct StrTabList shstrlist,strlist;
 static unsigned symtabidx,strtabidx,shstrtabidx;
 static unsigned symindex,shdrindex;
 static unsigned stabidx,stabstridx;
-static taddr stabsize,stabstrsize;
+static utaddr stabsize,stabstrsize;
 
 
 static unsigned addString(struct StrTabList *sl,char *s)
@@ -92,8 +92,8 @@ static struct Symbol64Node *addSymbol64(char *name)
 }
 
 
-static void newSym32(char *name,elfull value,elfull size,unsigned char bind,
-                     unsigned char type,unsigned shndx)
+static void newSym32(char *name,elfull value,elfull size,uint8_t bind,
+                     uint8_t type,unsigned shndx)
 {
   struct Symbol32Node *elfsym = addSymbol32(name);
 
@@ -104,8 +104,8 @@ static void newSym32(char *name,elfull value,elfull size,unsigned char bind,
 }
 
 
-static void newSym64(char *name,elfull value,elfull size,unsigned char bind,
-                     unsigned char type,unsigned shndx)
+static void newSym64(char *name,elfull value,elfull size,uint8_t bind,
+                     uint8_t type,unsigned shndx)
 {
   struct Symbol64Node *elfsym = addSymbol64(name);
 
@@ -212,7 +212,7 @@ static unsigned findelfsymbol(char *name)
 }
 
 
-static void init_ident(unsigned char *id,unsigned char class)
+static void init_ident(unsigned char *id,uint8_t class)
 {
   static char elfid[4] = { 0x7f,'E','L','F' };
 
@@ -224,7 +224,7 @@ static void init_ident(unsigned char *id,unsigned char class)
 }
 
 
-static unsigned long get_sec_type(section *s)
+static uint32_t get_sec_type(section *s)
 /* scan section attributes for type */
 {
   char *a = s->attr;
@@ -252,10 +252,10 @@ static unsigned long get_sec_type(section *s)
 }
 
 
-static taddr get_sec_flags(char *a)
+static utaddr get_sec_flags(char *a)
 /* scan section attributes for flags (read, write, alloc, execute) */
 {
-  taddr f = 0;
+  utaddr f = 0;
 
   while (*a) {
     switch (*a++) {
@@ -274,7 +274,7 @@ static taddr get_sec_flags(char *a)
 }
 
 
-static unsigned char get_sym_info(symbol *s)
+static uint8_t get_sym_info(symbol *s)
 /* determine symbol-info: function, object, section, etc. */
 {
   switch (TYPE(s)) {
@@ -303,13 +303,13 @@ static unsigned get_sym_index(symbol *s)
 }
 
 
-static taddr get_reloc_type(rlist **rl,
-                            taddr *roffset,taddr *addend,symbol **refsym)
+static utaddr get_reloc_type(rlist **rl,
+                             utaddr *roffset,taddr *addend,symbol **refsym)
 {
   rlist *rl2;
-  taddr mask,offset;
+  utaddr mask,offset;
   int size;
-  taddr t = 0;
+  utaddr t = 0;
 
   *roffset = 0;
   *addend = 0;
@@ -345,17 +345,18 @@ static taddr get_reloc_type(rlist **rl,
 }
 
 
-static taddr make_relocs(rlist *rl,taddr pc,
-                         void (*newsym)(char *,elfull,elfull,unsigned char,
-                                        unsigned char,unsigned),
-                         void (*addrel)(elfull,elfull,elfull,elfull))
+static utaddr make_relocs(rlist *rl,utaddr pc,
+                          void (*newsym)(char *,elfull,elfull,uint8_t,
+                                         uint8_t,unsigned),
+                          void (*addrel)(elfull,elfull,elfull,elfull))
 /* convert all of an atom's relocations into ELF32/ELF64 relocs */
 {
-  taddr ro = 0;
+  utaddr ro = 0;
 
   if (rl) {
     do {
-      taddr rtype,offset,addend;
+      utaddr rtype,offset;
+      taddr addend;
       symbol *refsym;
 
       if (rtype = get_reloc_type(&rl,&offset,&addend,&refsym)) {
@@ -388,20 +389,20 @@ static taddr make_relocs(rlist *rl,taddr pc,
 }
 
 
-static taddr prog_sec_hdrs(section *sec,taddr soffset,
-                           void *(*makeshdr)(elfull,elfull,elfull,elfull,
-                                             elfull,elfull,elfull,elfull),
-                           void (*newsym)(char *,elfull,elfull,
-                                          unsigned char,unsigned char,
-                                          unsigned))
+static utaddr prog_sec_hdrs(section *sec,utaddr soffset,
+                            void *(*makeshdr)(elfull,elfull,elfull,elfull,
+                                              elfull,elfull,elfull,elfull),
+                            void (*newsym)(char *,elfull,elfull,
+                                           uint8_t,uint8_t,
+                                           unsigned))
 {
   section *secp;
   void *shn;
 
   /* generate section headers for program sections */
   for (secp=sec; secp; secp=secp->next) {
-    if (get_sec_size(secp)>0 || (secp->flags & HAS_SYMBOLS)) {
-      unsigned long type = get_sec_type(secp);
+    if (get_sec_size(secp)!=0 || (secp->flags & HAS_SYMBOLS)) {
+      uint32_t type = get_sec_type(secp);
 
       secp->idx = ++shdrindex;
 
@@ -434,7 +435,7 @@ static taddr prog_sec_hdrs(section *sec,taddr soffset,
 
 static unsigned build_symbol_table(symbol *first,
                                    void (*newsym)(char *,elfull,elfull,
-                                                  unsigned char,unsigned char,
+                                                  uint8_t,uint8_t,
                                                   unsigned))
 {
   symbol *symp;
@@ -467,20 +468,20 @@ static unsigned build_symbol_table(symbol *first,
 
 static void make_reloc_sections(section *sec,
                                 void (*newsym)(char *,elfull,elfull,
-                                               unsigned char,unsigned char,
+                                               uint8_t,uint8_t,
                                                unsigned),
                                 void (*addrel)(elfull,elfull,elfull,elfull),
                                 void *(*makeshdr)(elfull,elfull,elfull,elfull,
                                                   elfull,elfull,elfull,elfull))
 {
-  taddr roffset = 0;
+  utaddr roffset = 0;
   section *secp;
 
   /* ".rela.xxx" or ".rel.xxx" relocation sections */
   for (secp=sec; secp; secp=secp->next) {
     if (secp->idx) {
       atom *a;
-      taddr pc=0,npc,basero=roffset;
+      utaddr pc=0,npc,basero=roffset;
 
       for (a=secp->first; a; a=a->next) {
         int align = a->align;
@@ -519,7 +520,7 @@ static void write_section_data(FILE *f,section *sec)
   for (secp=sec; secp; secp=secp->next) {
     if (secp->idx && get_sec_type(secp)!=SHT_NOBITS) {
       atom *a;
-      taddr pc=0,npc;
+      utaddr pc=0,npc;
       unsigned n;
       int align;
 
@@ -527,7 +528,7 @@ static void write_section_data(FILE *f,section *sec)
         /* patch compilation unit header */
         a = secp->first;
         if (a->content.db->size == 12) {
-          unsigned char *p = a->content.db->data;
+          uint8_t *p = a->content.db->data;
 
           setval(be,p,4,1);  /* refers to first string from .stabstr */
           setval(be,p+4,4,stabsize);
@@ -568,7 +569,7 @@ static void write_ELF64(FILE *f,section *sec,symbol *sym)
 {
   struct Elf64_Ehdr header;
   unsigned firstglobal,align1,align2,i;
-  taddr soffset=sizeof(struct Elf64_Ehdr);
+  utaddr soffset=sizeof(struct Elf64_Ehdr);
   struct Shdr64Node *shn;
   struct Symbol64Node *elfsym;
 
@@ -676,7 +677,7 @@ static void write_ELF32(FILE *f,section *sec,symbol *sym)
 {
   struct Elf32_Ehdr header;
   unsigned firstglobal,align1,align2,i;
-  taddr soffset=sizeof(struct Elf32_Ehdr);
+  utaddr soffset=sizeof(struct Elf32_Ehdr);
   struct Shdr32Node *shn;
   struct Symbol32Node *elfsym;
 

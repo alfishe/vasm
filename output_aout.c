@@ -9,8 +9,8 @@ static char *copyright="vasm a.out output module 0.5 (c) 2008-2012 Frank Wille";
 static int mid = MID;
 
 static section *sections[3];
-static taddr secsize[3];
-static taddr secoffs[3];
+static utaddr secsize[3];
+static utaddr secoffs[3];
 static int sectype[] = { N_TEXT, N_DATA, N_BSS };
 static int secweak[] = { N_WEAKT, N_WEAKD, N_WEAKB };
 
@@ -24,7 +24,7 @@ static int isPIC = 1;
 #define SECT_ALIGN 4  /* .text and .data are aligned to 32 bits */
 
 
-static unsigned int get_sec_type(section *s)
+static int get_sec_type(section *s)
 /* scan section attributes for type, 0=text, 1=data, 2=bss */
 {
   char *a = s->attr;
@@ -83,13 +83,13 @@ static int aout_getbind(symbol *sym)
 }
 
 
-static unsigned long aoutstd_getrinfo(rlist *rl,int xtern,char *sname,int be)
+static uint32_t aoutstd_getrinfo(rlist *rl,int xtern,char *sname,int be)
 /* Convert vasm relocation type into standard a.out relocations, */
 /* as used by M68k and x86 targets. */
 /* For xtern=-1, return true when this relocation requires a base symbol. */
 {
   nreloc *nr;
-  unsigned long r=0,s=4;
+  uint32_t r=0,s=4;
   int b=0;
 
   if (nr = (nreloc *)rl->reloc) {
@@ -163,7 +163,7 @@ static void aout_initwrite(section *sec)
 }
 
 
-static unsigned long aout_addstr(char *s)
+static uint32_t aout_addstr(char *s)
 /* add a new symbol name to the string table and return its offset */
 {
   struct StrTabNode **chain = &aoutstrlist.hashtab[hashcode(s)%STRHTABSIZE];
@@ -190,7 +190,7 @@ static unsigned long aout_addstr(char *s)
 }
 
 
-static unsigned long aout_addsym(char *name,taddr value,int bind,
+static uint32_t aout_addsym(char *name,taddr value,int bind,
                                  int info,int type,int desc,int be)
 /* add a new symbol, return its symbol table index */
 {
@@ -313,8 +313,8 @@ static void aout_addsymlist(symbol *sym,int bind,int type,int be)
 }
 
 
-static void aout_addreloclist(struct list *rlst,unsigned long raddr,
-                              unsigned long rindex,unsigned long rinfo,int be)
+static void aout_addreloclist(struct list *rlst,uint32_t raddr,
+                              uint32_t rindex,uint32_t rinfo,int be)
 /* add new relocation_info to .text or .data reloc-list */
 {
   struct RelocNode *rn = mymalloc(sizeof(struct RelocNode));
@@ -332,12 +332,12 @@ static void aout_addreloclist(struct list *rlst,unsigned long raddr,
 }
 
 
-static unsigned long aout_convert_rlist(int be,atom *a,int secid,
-                                        struct list *rlst,taddr pc,
-                          unsigned long (*getrinfo)(rlist *,int,char *,int))
+static uint32_t aout_convert_rlist(int be,atom *a,int secid,
+                                   struct list *rlst,taddr pc,
+                                   uint32_t (*getrinfo)(rlist *,int,char *,int))
 /* convert all of an atom's relocs into a.out relocations */
 {
-  unsigned long rsize = 0;
+  uint32_t rsize = 0;
   rlist *rl;
 
   if (a->type == DATA)
@@ -402,11 +402,11 @@ static unsigned long aout_convert_rlist(int be,atom *a,int secid,
 }
 
 
-static unsigned long aout_addrelocs(int be,int secid,struct list *rlst,
-                        unsigned long (*getrinfo)(rlist *,int,char *,int))
+static uint32_t aout_addrelocs(int be,int secid,struct list *rlst,
+                               uint32_t (*getrinfo)(rlist *,int,char *,int))
 /* creates a.out relocations for a single section (.text or .data) */
 {
-  unsigned long rtabsize=0;
+  uint32_t rtabsize=0;
 
   if (sections[secid]) {
     atom *a;
@@ -424,11 +424,10 @@ static unsigned long aout_addrelocs(int be,int secid,struct list *rlst,
 }
 
 
-static void aout_header(FILE *f,unsigned long mag,unsigned long flag,
-                        unsigned long tsize,unsigned long dsize,
-                        unsigned long bsize,unsigned long syms,
-                        unsigned long entry,unsigned long trsize,
-                        unsigned long drsize,int be)
+static void aout_header(FILE *f,uint32_t mag,uint32_t flag,
+                        uint32_t tsize,uint32_t dsize,uint32_t bsize,
+                        uint32_t syms,uint32_t entry,
+                        uint32_t trsize,uint32_t drsize,int be)
 /* write an a.out header */
 {
   struct aout_hdr h;
@@ -501,7 +500,7 @@ void aout_writestrings(FILE *f,int be)
 static void write_output(FILE *f,section *sec,symbol *sym)
 {
   int be = BIGENDIAN;
-  unsigned long trsize,drsize;
+  uint32_t trsize,drsize;
 
   aout_initwrite(sec);
   aout_addsymlist(sym,BIND_GLOBAL,0,be);

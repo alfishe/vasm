@@ -49,8 +49,8 @@
   "cannot declare structure within structure",ERROR,
   "no structure",ERROR,
   "instruction has been auto-aligned",WARNING,                  /* 50 */
-  "macro name conflicts with mnemonic",ERROR,
-  "macro name conflicts with directive",ERROR,
+  "macro name conflicts with mnemonic",WARNING,
+  "macro name conflicts with directive",WARNING,
   "non-relocatable expression in equate <%s>",NOLINE|ERROR,
   "line buffer overflow",ERROR|FATAL,
   "illegal structure recursion",ERROR|FATAL,                    /* 55 */

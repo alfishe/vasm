@@ -97,6 +97,7 @@ struct source {
 #define UNALLOCATED 4
 #define LABELS_ARE_LOCAL 8
 #define ABSOLUTE 16
+#define SECRSRVD (1L<<24)   /* bits 24..31 are reserved for output modules */
 
 /* section description */
 struct section {
@@ -155,7 +156,7 @@ extern char emptystr[];
 extern char vasmsym_name[];
 
 extern unsigned long long taddrmask;
-#define UNS_TADDR(x) (((unsigned long long)x)&taddrmask)
+#define ULLTADDR(x) (((unsigned long long)x)&taddrmask)
 
 /* provided by main assembler module */
 extern int debug;
@@ -200,9 +201,9 @@ int parse_operand(char *text,int len,operand *out,int requires);
 #define PO_MATCH 1
 #define PO_NOMATCH 0
 #define PO_CORRUPT -1
-taddr instruction_size(instruction *,section *,taddr);
+size_t instruction_size(instruction *,section *,taddr);
 dblock *eval_instruction(instruction *,section *,taddr);
-dblock *eval_data(operand *,taddr,section *,taddr);
+dblock *eval_data(operand *,size_t,section *,taddr);
 #if HAVE_INSTRUCTION_EXTENSION
 void init_instruction_ext(instruction_ext *);
 #endif

@@ -4,7 +4,7 @@
 #include "hugeint.h"
 
 enum {
-  ADD,SUB,MUL,DIV,MOD,NEG,CPL,LAND,LOR,BAND,BOR,XOR,NOT,LSH,RSH,
+  ADD,SUB,MUL,DIV,MOD,NEG,CPL,LAND,LOR,BAND,BOR,XOR,NOT,LSH,RSH,RSHU,
   LT,GT,LEQ,GEQ,NEQ,EQ,NUM,HUG,FLT,SYM
 };
 #define LAST_EXP_TYPE SYM
@@ -32,6 +32,7 @@ struct expr {
 
 /* global variables */
 extern char current_pc_char;
+extern int unsigned_shift;
 
 /* functions */
 expr *new_expr(void);

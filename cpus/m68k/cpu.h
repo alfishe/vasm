@@ -73,10 +73,11 @@ typedef struct {
 #define OCMD_OPTLQUICK  25
 #define OCMD_OPTIMMADDR 26
 #define OCMD_OPTSPEED   27
-#define OCMD_OPTWARN    28
-#define OCMD_CHKPIC     29
-#define OCMD_CHKTYPE    30
-#define OCMD_NOWARN     31
+#define OCMD_SMALLCODE  28
+#define OCMD_OPTWARN    29
+#define OCMD_CHKPIC     30
+#define OCMD_CHKTYPE    31
+#define OCMD_NOWARN     32
 
 /* minimum instruction alignment */
 #define INST_ALIGN 2

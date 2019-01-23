@@ -28,16 +28,16 @@ static void write_output(FILE *f,section *sec,symbol *sym)
   for (s=sec; s; s=s->next) {
     for (s2=sec; s2; s2=s2->next) {
       if (s2!=s &&
-          ((UNS_TADDR(s2->org) >= UNS_TADDR(s->org) &&
-            UNS_TADDR(s2->org) < UNS_TADDR(s->pc)) ||
-           (UNS_TADDR(s2->pc) > UNS_TADDR(s->org) &&
-            UNS_TADDR(s2->pc) <= UNS_TADDR(s->pc))))
+          ((ULLTADDR(s2->org) >= ULLTADDR(s->org) &&
+            ULLTADDR(s2->org) < ULLTADDR(s->pc)) ||
+           (ULLTADDR(s2->pc) > ULLTADDR(s->org) &&
+            ULLTADDR(s2->pc) <= ULLTADDR(s->pc))))
         output_error(0);
     }
   }
 
   if (binfmt == BINFMT_CBMPRG) {
-    /* Commodore PRG header:
+    /* Commodore 6502 PRG header:
      * 00: LSB of load address
      * 01: MSB of load address
      */
@@ -46,13 +46,13 @@ static void write_output(FILE *f,section *sec,symbol *sym)
   }
 
   for (s=sec; s; s=s->next) {
-    if (s!=sec && UNS_TADDR(s->org)>pc) {
+    if (s!=sec && ULLTADDR(s->org)>pc) {
       /* fill gap between sections with zeros */
-      for (; pc<UNS_TADDR(s->org); pc++)
+      for (; pc<ULLTADDR(s->org); pc++)
         fw8(f,0);
     }
     else
-      pc = UNS_TADDR(s->org);
+      pc = ULLTADDR(s->org);
 
     for (p=s->first; p; p=p->next) {
       npc = (pc + p->align - 1) / p->align * p->align;

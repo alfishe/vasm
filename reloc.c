@@ -16,33 +16,55 @@ nreloc *new_nreloc(void)
 
 
 rlist *add_nreloc(rlist **relocs,symbol *sym,taddr addend,
-                  int type,int size,int offs)
+                  int type,size_t size,size_t offs)
 {
-  nreloc *r = new_nreloc();
-  rlist *rl = mymalloc(sizeof(rlist));
+  rlist *rl;
+  nreloc *r;
 
+  if (sym->sec!=NULL && (sym->sec->flags & ABSOLUTE))
+    return NULL;  /* no relocation, when symbol is from an ORG-section */
+
+  r = new_nreloc();
   r->size = size;
   r->offset = offs;
   r->sym = sym;
   r->addend = addend;
+  rl = mymalloc(sizeof(rlist));
   rl->type = type;
   rl->reloc = r;
   rl->next = *relocs;
   *relocs = rl;
+
   return rl;
 }
 
 
 rlist *add_nreloc_masked(rlist **relocs,symbol *sym,taddr addend,
-                         int type,int size,int offs,taddr mask)
+                         int type,size_t size,size_t offs,taddr mask)
 {
   rlist *rl;
   nreloc *r;
 
-  rl = add_nreloc(relocs,sym,addend,type,size,offs);
-  r = rl->reloc;
-  r->mask = mask;
+  if (rl = add_nreloc(relocs,sym,addend,type,size,offs)) {
+    r = rl->reloc;
+    r->mask = mask;
+  }
   return rl;
+}
+
+
+int is_pc_reloc(symbol *sym,section *cur_sec)
+/* Returns true when the symbol needs a REL_PC relocation to reference it
+   pc-relative. This is the case when it is externally defined or a label
+   from a different section (so the linker has to resolve the distance). */
+{
+  if (sym->type == IMPORT)
+    return 1;
+  else if (sym->type == LABSYM)
+    return (sym->sec!=cur_sec &&
+            (!(sym->sec->flags & ABSOLUTE) || !(cur_sec->flags & ABSOLUTE)));
+  ierror(0);
+  return 0;
 }
 
 
@@ -89,16 +111,19 @@ void print_reloc(FILE *f,int type,nreloc *p)
       "none","abs","pc","got","gotrel","gotoff","globdat","plt","pltrel",
       "pltoff","sd","uabs","localpc","loadrel","copy","jmpslot","secoff"
     };
-    fprintf(f,"r%s(%d,%d,0x%llx,0x%llx,",rname[type],p->offset,p->size,
-            UNS_TADDR(p->mask),UNS_TADDR(p->addend));
+    fprintf(f,"r%s(%lu,%lu,0x%llx,0x%llx,",rname[type],
+            (unsigned long)p->offset,(unsigned long)p->size,
+            ULLTADDR(p->mask),ULLTADDR(p->addend));
   }
 #ifdef VASM_CPU_PPC
   else if (type<=LAST_PPC_RELOC){
     static const char *rname[] = {
       "sd2","sd21","sdi16","drel","brel"
     };
-    fprintf(f,"r%s(%d,%d,0x%llx,0x%llx,",rname[type-(LAST_STANDARD_RELOC+1)],
-            p->offset,p->size,UNS_TADDR(p->mask),UNS_TADDR(p->addend));
+    fprintf(f,"r%s(%lu,%lu,0x%llx,0x%llx,",
+            rname[type-(LAST_STANDARD_RELOC+1)],
+            (unsigned long)p->offset,(unsigned long)p->size,
+            ULLTADDR(p->mask),ULLTADDR(p->addend));
   }
 #endif
   else

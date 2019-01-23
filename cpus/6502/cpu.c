@@ -190,7 +190,7 @@ static void optimize_instruction(instruction *ip,section *sec,
 }
 
 
-static taddr get_inst_size(instruction *ip)
+static size_t get_inst_size(instruction *ip)
 {
   if (ip->op[0] != NULL) {
     switch (ip->op[0]->type) {
@@ -221,7 +221,7 @@ static taddr get_inst_size(instruction *ip)
 }
 
 
-taddr instruction_size(instruction *ip,section *sec,taddr pc)
+size_t instruction_size(instruction *ip,section *sec,taddr pc)
 {
   instruction *ipcopy;
 
@@ -293,7 +293,7 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
       if (!eval_expr(op->value,&val,sec,pc)) {
         modifier = 0;
         if (find_base(op->value,&base,sec,pc) == BASE_OK) {
-          if (optype==REL && base->type==LABSYM && base->sec==sec) {
+          if (optype==REL && !is_pc_reloc(base,sec)) {
             /* relative branch requires no relocation */
             val = val - (pc + 2);
           }
@@ -331,11 +331,13 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
             rl = add_nreloc(&db->relocs,base,val,type,size,offs);
             switch (modifier) {
               case LOBYTE:
-                ((nreloc *)rl->reloc)->mask = 0xff;
+                if (rl)
+                  ((nreloc *)rl->reloc)->mask = 0xff;
                 val = val & 0xff;
                 break;
               case HIBYTE:
-                ((nreloc *)rl->reloc)->mask = 0xff00;
+                if (rl)
+                  ((nreloc *)rl->reloc)->mask = 0xff00;
                 val = (val >> 8) & 0xff;
                 break;
             }
@@ -387,7 +389,7 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
 }
 
 
-dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
+dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 {
   dblock *db = new_dblock();
   taddr val;
@@ -409,11 +411,13 @@ dblock *eval_data(operand *op,taddr bitsize,section *sec,taddr pc)
                       btype==BASE_PCREL?REL_PC:REL_ABS,bitsize,0);
       switch (modifier) {
         case LOBYTE:
-          ((nreloc *)rl->reloc)->mask = 0xff;
+          if (rl)
+            ((nreloc *)rl->reloc)->mask = 0xff;
           val = val & 0xff;
           break;
         case HIBYTE:
-          ((nreloc *)rl->reloc)->mask = 0xff00;
+          if (rl)
+            ((nreloc *)rl->reloc)->mask = 0xff00;
           val = (val >> 8) & 0xff;
           break;
       }

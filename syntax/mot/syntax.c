@@ -12,7 +12,7 @@
    be provided by the main module.
 */
 
-char *syntax_copyright="vasm motorola syntax module 3.6 (c) 2002-2014 Frank Wille";
+char *syntax_copyright="vasm motorola syntax module 3.6a (c) 2002-2014 Frank Wille";
 hashtable *dirhash;
 char commentchar = ';';
 
@@ -356,8 +356,6 @@ static void handle_section(char *s)
   char attr[32];
   char *name;
 
-  strcpy(attr,code_type);
-
   /* read section name */
   if (!(name = parse_name(&s)))
     return;
@@ -366,10 +364,14 @@ static void handle_section(char *s)
     /* read section type */
     s = read_sec_attr(attr,skip(s+1));
   }
-  else if (!phxass_compat) {
-    /* only name is given - treat name as type */
-    if (!read_sec_attr(attr,name))
-      s = NULL;
+  else {
+    /* only name is given - guess type from name */
+    if (!stricmp(name,"data"))
+      strcpy(attr,data_type);
+    else if (!stricmp(name,"bss"))
+      strcpy(attr,bss_type);
+    else
+      strcpy(attr,code_type);
   }
 
   if (s) {
