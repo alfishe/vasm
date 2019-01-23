@@ -6,7 +6,7 @@
 
 #include "vasm.h"
 
-#define _VER "vasm 1.7a"
+#define _VER "vasm 1.7b"
 char *copyright = _VER " (c) in 2002-2014 Volker Barthelmann";
 #ifdef AMIGA
 static const char *_ver = "$VER: " _VER " " __AMIGADATE__ "\r\n";
@@ -144,7 +144,7 @@ static void resolve_section(section *sec)
              pass<=fastphase?" (fast)\n":"\n");
     sec->pc=sec->org;
     for(p=sec->first;p;p=p->next){
-      sec->pc=(sec->pc+p->align-1)/p->align*p->align;
+      sec->pc=pcalign(p,sec->pc);
       cur_src=p->src;
       cur_src->line=p->line;
 #if HAVE_CPU_OPTS
@@ -246,7 +246,7 @@ static void assemble(void)
     }
     for(p=sec->first;p;p=p->next){
       basepc=sec->pc;
-      sec->pc=(sec->pc+p->align-1)/p->align*p->align;
+      sec->pc=pcalign(p,sec->pc);
       cur_src=p->src;
       cur_src->line=p->line;
       if(p->list&&p->list->atom==p){
@@ -366,8 +366,10 @@ static void undef_syms(void)
   symbol *sym;
 
   for(sym=first_symbol;sym;sym=sym->next){
-    if (sym->type==IMPORT&&!(sym->flags&(EXPORT|COMMON|WEAK)))
+    if (!auto_import&&sym->type==IMPORT&&!(sym->flags&(EXPORT|COMMON|WEAK)))
       general_error(22,sym->name);
+    else if (sym->type==IMPORT&&!(sym->flags&REFERENCED))
+      general_error(61,sym->name);
   }
 }
 
@@ -656,7 +658,7 @@ int main(int argc,char **argv)
   if(errors==0||produce_listing)
     assemble();
   cur_src=NULL;
-  if(!auto_import)
+  if(errors==0)
     undef_syms();
   label_expressions();
   if(!listname)
@@ -754,8 +756,9 @@ void include_source(char *inname)
     }
     if (feof(f)) {
       if (size > 0) {
-        cur_src = new_source(filename,myrealloc(text,size+1),size+1);
+        cur_src = new_source(filename,myrealloc(text,size+2),size+1);
         *(cur_src->text+size) = '\n';
+        *(cur_src->text+size+1) = '\0';
       }
       else {
         myfree(text);
@@ -834,6 +837,8 @@ section *new_section(char *name,char *attr,int align)
   p->align=align;
   p->org=p->pc=0;
   p->flags=0;
+  memset(p->pad,0,MAXPADBYTES);
+  p->padbytes=1;
   if(last_section)
     last_section=last_section->next=p;
   else
@@ -918,7 +923,7 @@ void print_section(FILE *f,section *sec)
   fprintf(f,"section %s (attr=<%s> align=%llu):\n",
           sec->name,sec->attr,ULLTADDR(sec->align));
   for(p=sec->first;p;p=p->next){
-    pc=(pc+p->align-1)/p->align*p->align;
+    pc=pcalign(p,pc);
     fprintf(f,"%8llx: ",ULLTADDR(pc));
     print_atom(f,p);
     fprintf(f,"\n");
@@ -1116,7 +1121,7 @@ void write_listing(char *listname)
       }
       if(a->next&&a->next->line==a->line&&a->next->src==a->src){
         a=a->next;
-        pc=(pc+a->align-1)/a->align*a->align;
+        pc=pcalign(a,pc);
         if(a->type==DATA&&a->content.db->relocs){
           symbol *s=((nreloc *)(a->content.db->relocs->reloc))->sym;
           if(s->type==IMPORT)
@@ -1205,7 +1210,7 @@ void write_listing(char *listname)
       }
       if(a->next&&a->next->line==a->line&&a->next->src==a->src){
         a=a->next;
-        pc=(pc+a->align-1)/a->align*a->align;
+        pc=pcalign(a,pc);
       }else
         a=0;
     }

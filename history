@@ -1,6 +1,46 @@
 vasm history
 =============
 
+- 1.7b (28.12.14)
+o Fixed stack overflow and crash when using recursively defined symbols.
+  Bug was present since introducing new 128-bit and float expressions in 1.7.
+o Issue a warning when a symbol was declared as external, but nowhere
+  referenced in the source.
+o m68k: Do not optimize MOVEM to MOVEA or MOVE when predecrement or
+  postincrement addressing mode is used with a register from the list.
+o m68k: The Devpac directive OPT X (xdebug) works now as expected for
+  hunk-format object files and for TOS executables.
+o m68k: In Devpac-compatibility mode (-devpac) the __LK symbol is predefined
+  and reflects the output file type: 0 = Atari executable, 3 = Amiga object,
+  4 = Amiga executable, 99 = all others which are unknown to Devpac.
+o m68k: MOVEM #list,-(An) must not reverse the bit mask automatically, but
+  expect an already reversed one.
+o m68k: BTST #n,#m is illegal.
+o m68k: LEA (d32,An),Am translation to MOVE.L/ADD.L stopped working with
+  V1.6c. Fixed again.
+o ARM: TEQP, TSTP, CMNP and CMPP were missing for AA2.
+o ARM: Fixed recognition of addressing mode and condition codes with
+  instructions written in upper case.
+o 6502: New option -c02 to enable 65C02 instructions.
+o mot-syntax: In PhxAss- and Devpac-compatibility mode only the directives
+  which are known by the emulated assembler are supported.
+o mot-syntax: RS, SO and FO offset directives use an aligned offset in
+  Devpac-compatibility mode or when the -align option is given.
+o std-syntax: The optional third argument of .balign/.p2align/.align is now
+  really supported and defines a maximum number of padding bytes.
+o std-syntax: New directives: .balignw, .balignl, .p2alignw, .p2alignl,
+  .zero, .swbeg.
+o std-syntax: .word should rather define 16-bit than 32-bit constants.
+o std-syntax: .local followed by .comm should be the same as .lcomm.
+o oldstyle-syntax: Fixed recognizion of .equ/.eq/.set/.mac/.macro with
+  -dotdir option.
+o hunk-output: New option -linedebug automatically generates a LINE DEBUG
+  hunk for the input source.
+o aout-output: Always generate an external reference to a weak symbol,
+  even when the symbol is defined.
+o elf-output: Always generate an external reference to a weak symbol,
+  even when the symbol is defined.
+
 - 1.7a (25.08.14)
 o Addend for "external_label-current_section_label" PC-relative relocation
   was not calculated correctly.
@@ -33,11 +73,11 @@ o m68k: NEAR CODE from PhxAss is supported and translates all absolute
 o m68k: New option -sc to set small code mode (same as NEAR CODE directive).
 o mot-syntax: SECTION with a single argument defaults to a code section,
   except when the name is "data" or "bss".
-o output-hunk: New option -kick1hunks to use only those hunk types and
+o hunk-output: New option -kick1hunks to use only those hunk types and
   external reference types which have been valid at the time of Kickstart
   1.x for compatibility with old assembler sources and old linkers.
-o output-tos: A 16-bit aligned section size must also show up in the header.
-o output-tos: New option -monst for writing Devpac MonST-compatible
+o tos-output: A 16-bit aligned section size must also show up in the header.
+o tos-output: New option -monst for writing Devpac MonST-compatible
   symbols.
 
 - 1.7 (02.07.14)
@@ -100,7 +140,7 @@ o oldstyle-syntax: Supports intel-style constant suffixes (like 'h' to
 o oldstyle-syntax: A terminating colon on a label is also allowed before
   an equate, set or macro directive.
 o oldstyle-syntax: Added IFD and IFND (same as IFDEF and IFNDEF).
-o output-tos: Fixed a potential problem allocating 0 bytes, when there are
+o tos-output: Fixed a potential problem allocating 0 bytes, when there are
   no reloctions in a file.
 
 - 1.6c (09.02.14)
@@ -158,7 +198,7 @@ o mot-syntax: When no output name is given in PhxAss mode, a default name
   is constructed from the input name (name or name.o).
 o oldstyle-syntax: Some new directives, used in 68HC11 sources: bsz, rmb, zmb,
   fcb, fcc, fdb.
-o output-bin: Fixed misdetection of overlapping sections, caused by signed
+o bin-output: Fixed misdetection of overlapping sections, caused by signed
   section origins (e.g. >= 0x8000 on 6502).
 
 - 1.6b (01.05.13)
@@ -182,7 +222,7 @@ o std-syntax: Allow labels on the same line as an .endif directive.
 o std-syntax: When # is used as the first non-blank character on a line,
   then it can still start a comment, even for architectures which define
   a different comment character (e.g. ARM, M68k).
-o output-tos: Fixed uninitialized relocation pointer, which could lead to
+o tos-output: Fixed uninitialized relocation pointer, which could lead to
   illegal memory accesses.
 
 - 1.6a (02.04.13)
@@ -214,7 +254,7 @@ o oldstyle-syntax: STRUCT and ENDSTRUCT directives for supporting
 o mot-syntax: Devpac-compatible CARGS directive.
 o mot-syntax: New directive OFFSET. Devpac-compatible, but additionally to
   Devpac it allows any directive or instruction within such a section.
-o output-vobj: Output was broken since 1.6, when relocations based on
+o vobj-output: Output was broken since 1.6, when relocations based on
   the current-pc symbol had been used.
 
 - 1.6 (29.12.12)
@@ -361,7 +401,7 @@ o mot-syntax: When OUTPUT is used with ".name" then it is not only appended
   (Devpac compatibility).
 o mot-syntax: Option -localu makes local symbols start with an underscore
   instead of a dot (from Devpac).
-o output-vobj: A file without sections no longer causes an internal error.
+o vobj-output: A file without sections no longer causes an internal error.
 
 - 1.5 (01.12.10)
 o A "\\" inside a macro has to be replaced by "\" when the assembler is
@@ -502,7 +542,7 @@ o mot-syntax: Conditional directives also allow non-constant expressions,
   assembler pass.
 o mot-syntax: Predefines offsets symbols __RS, __SO and __FO with value 0
   in -devpac mode.
-o output-tos: Section alignment must be 16 bits, not 32. With another two
+o tos-output: Section alignment must be 16 bits, not 32. With another two
   zero-bytes for 32-bit alignment the OS couldn't see any relocations.
 
 - 1.4c (05.11.09)
@@ -525,7 +565,7 @@ o m68k: Fixed several "displacement out of range" errors.
 o mot-syntax: With -phxass option, macro names are case-insensitive.
 o hunk-output: Report undefined symbols in hunkexe-mode as such, instead of
   just printing "unsupported reloc".
-o output-vobj: vasm-internal symbols must not be ignored in the output as
+o vobj-output: vasm-internal symbols must not be ignored in the output as
   relocations refering to the current-pc-symbol depend on them.
 
 - 1.4b (14.10.09)
@@ -708,6 +748,7 @@ o std-syntax: Support for local symbols of the form ".nnn", where nnn stands
 o vobj-output: New option -nosym, to discard local symbols.
 o vobj-output: Fixed bug with bss section. All sections after a bss appeared
   as corrupted.
+o aout
 
 - 1.3b (23.10.08)
 o New relocations, from vlink 0.12+, to keep the VOBJ format compatible.

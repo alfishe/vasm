@@ -12,7 +12,7 @@
    be provided by the main module.
 */
 
-char *syntax_copyright="vasm std syntax module 3.8d (c) 2002-2014 Volker Barthelmann";
+char *syntax_copyright="vasm std syntax module 3.8f (c) 2002-2014 Volker Barthelmann";
 hashtable *dirhash;
 
 static char textname[]=".text",textattr[]="acrx";
@@ -335,8 +335,9 @@ static void do_binding(char *s,int bind)
     }
     sym=new_import(name);
     myfree(name);
-    if(sym->flags&(EXPORT|WEAK|LOCAL)!=0 &&
-       sym->flags&(EXPORT|WEAK|LOCAL)!=bind)
+    if(((sym->flags&(EXPORT|WEAK|LOCAL))!=0 &&
+        (sym->flags&(EXPORT|WEAK|LOCAL))!=bind)
+       || ((sym->flags&COMMON) && bind==LOCAL))
       syntax_error(20,sym->name,get_bind_name(sym));  /* binding already set */
     else
       sym->flags|=bind;
@@ -363,16 +364,16 @@ static void handle_local(char *s)
   do_binding(s,LOCAL);
 }
 
-static void do_align(taddr align,expr *fill,taddr max)
-/* @@@ 'max' alignment is not really supported at the moment */
+static void do_align(taddr align,size_t width,expr *fill,taddr max)
 {
-  atom *a = new_space_atom(number_expr(0),1,fill);
+  atom *a = new_space_atom(number_expr(0),width,fill);
 
   a->align = align;
+  a->content.sb->maxalignbytes = max;
   add_atom(0,a);
 }
 
-static void alignment(char *s,int mode)
+static void alignment(char *s,int mode,size_t patwidth)
 {
   int align,max=0;
   expr *fill=0;
@@ -393,23 +394,43 @@ static void alignment(char *s,int mode)
     mode = CPU_DEF_ALIGN;
   if (mode==2 && align>63)
     syntax_error(23);  /* alignment too big */
-  do_align(mode==1?align:(1<<align),fill,max);
+  do_align(mode==1?align:(1<<align),patwidth,fill,max);
   eol(s);
 }
 
 static void handle_align(char *s)
 {
-  alignment(s,0);
+  alignment(s,0,1);
 }
 
 static void handle_balign(char *s)
 {
-  alignment(s,1);
+  alignment(s,1,1);
+}
+
+static void handle_balignw(char *s)
+{
+  alignment(s,1,2);
+}
+
+static void handle_balignl(char *s)
+{
+  alignment(s,1,4);
 }
 
 static void handle_p2align(char *s)
 {
-  alignment(s,2);
+  alignment(s,2,1);
+}
+
+static void handle_p2alignw(char *s)
+{
+  alignment(s,2,2);
+}
+
+static void handle_p2alignl(char *s)
+{
+  alignment(s,2,4);
 }
 
 static void handle_space(char *s)
@@ -519,7 +540,7 @@ static void new_bss(char *s,int global)
 
 static void handle_comm(char *s)
 {
-  char *name;
+  char *name,*start=s;
   symbol *sym;
 
   if (alloccommon){
@@ -530,6 +551,12 @@ static void handle_comm(char *s)
     syntax_error(10);  /* identifier expected */
     return;
   }
+  if ((sym=find_symbol(name))&&(sym->flags&LOCAL)) {
+    myfree(name);
+    new_bss(start,0);  /* symbol is local, make it .lcomm instead */
+    return;
+  }
+
   sym=new_import(name);
   myfree(name);
   s=skip(s);
@@ -964,6 +991,11 @@ static void handle_nolist(char *s)
   set_listing(0);
 }
 
+static void handle_swbeg(char *s)
+{
+  /* gas emits no code here? Ignore...? */
+}
+
 struct {
   char *name;
   void (*func)(char *);
@@ -976,14 +1008,14 @@ struct {
   "asciz",handle_string,
   "short",handle_16bit,
   "half",handle_16bit,
-  "word",handle_32bit,
+  "word",handle_16bit,
   "int",handle_32bit,
   "long",handle_32bit,
   "quad",handle_64bit,
   "2byte",handle_16bit_noalign,
   "uahalf",handle_16bit_noalign,
   "4byte",handle_32bit_noalign,
-  "uaword",handle_32bit_noalign,
+  "uaword",handle_16bit_noalign,
   "ualong",handle_32bit_noalign,
   "8byte",handle_64bit_noalign,
   "uaquad",handle_64bit_noalign,
@@ -1004,9 +1036,14 @@ struct {
   "local",handle_local,
   "align",handle_align,
   "balign",handle_balign,
+  "balignw",handle_balignw,
+  "balignl",handle_balignl,
   "p2align",handle_p2align,
+  "p2alignw",handle_p2alignw,
+  "p2alignl",handle_p2alignl,
   "space",handle_space,
   "skip",handle_space,
+  "zero",handle_space,
   "comm",handle_comm,
   "lcomm",handle_lcomm,
   "size",handle_size,
@@ -1042,6 +1079,7 @@ struct {
   "ident",handle_ident,
   "list",handle_list,
   "nolist",handle_nolist,
+  "swbeg",handle_swbeg,
 };
 
 int dir_cnt=sizeof(directives)/sizeof(directives[0]);

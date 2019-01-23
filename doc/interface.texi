@@ -157,6 +157,7 @@ with "gmake".
 The following CPU modules can be selected:
 @itemize
 @item @code{CPU=6502}
+@item @code{CPU=6800}
 @item @code{CPU=arm}
 @item @code{CPU=c16x}
 @item @code{CPU=jagrisc}
@@ -384,6 +385,10 @@ following members that can be accessed by the modules:.
 
 @item #define PROTECTED (1<<8)
         Used internally to protect the current-PC symbol from deletion.
+
+@item #define REFERENCED (1<<9)
+        Symbol was referenced in the source and a relocation entry has
+        been created.
 
 @item #define RSRVD_S (1L<<24)
         The range from bit 24 to 27 (counted from the LSB) is reserved for
@@ -628,6 +633,10 @@ Optional. Evaluated and copied to @code{fill} in the final pass, when not null.
 
 @item rlist *relocs;
 A pointer to relocation information for the space.
+
+@item taddr maxalignbytes;
+An optional number of maximum padding bytes to fulfil the atom's alignment
+requirement. Zero means there is no restriction.
 @end table
 
 @item    defblock *defb;

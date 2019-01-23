@@ -145,8 +145,9 @@ sblock *new_sblock(expr *space,size_t size,expr *fill)
   sb->space_exp = space;
   sb->size = size;
   if (!(sb->fill_exp = fill))
-    memset(sb->fill,0,SB_MAXSIZE);
+    memset(sb->fill,0,MAXPADBYTES);
   sb->relocs = 0;
+  sb->maxalignbytes = 0;
   return sb;
 }
 
@@ -227,7 +228,7 @@ void add_atom(section *sec,atom *a)
   a->next = 0;
   sec->last = a;
 
-  sec->pc = (sec->pc + a->align - 1) / a->align * a->align;
+  sec->pc = pcalign(a,sec->pc);
   a->lastsize = atom_size(a,sec,sec->pc);
   sec->pc += a->lastsize;
   if (a->align > sec->align)
@@ -387,13 +388,21 @@ atom *clone_atom(atom *a)
 }
 
 
-atom *new_inst_atom(instruction *p)
+static atom *new_atom(int type,taddr align)
 {
   atom *new = mymalloc(sizeof(*new));
 
-  new->next = 0;
-  new->type = INSTRUCTION;
-  new->align = INST_ALIGN;
+  new->next = NULL;
+  new->type = type;
+  new->align = align;
+  return new;
+}
+
+
+atom *new_inst_atom(instruction *p)
+{
+  atom *new = new_atom(INSTRUCTION,INST_ALIGN);
+
   new->content.inst = p;
   return new;
 }
@@ -401,23 +410,17 @@ atom *new_inst_atom(instruction *p)
 
 atom *new_data_atom(dblock *p,taddr align)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(DATA,align);
 
-  new->next = 0;
-  new->type = DATA;
-  new->align = align;
-  new->content.db=p;
+  new->content.db = p;
   return new;
 }
 
 
 atom *new_label_atom(symbol *p)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(LABEL,1);
 
-  new->next = 0;
-  new->type = LABEL;
-  new->align = 1;
   new->content.label = p;
   return new;
 }
@@ -425,14 +428,11 @@ atom *new_label_atom(symbol *p)
 
 atom *new_space_atom(expr *space,size_t size,expr *fill)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(SPACE,1);
   int i;
 
   if (size<1)
     ierror(0);  /* usually an error in syntax-module */
-  new->next = 0;
-  new->type = SPACE;
-  new->align = 1;
   new->content.sb = new_sblock(space,size,fill);
   return new;
 }  
@@ -440,10 +440,8 @@ atom *new_space_atom(expr *space,size_t size,expr *fill)
 
 atom *new_datadef_atom(size_t bitsize,operand *op)
 {
-  atom *new = mymalloc(sizeof(*new));
-  new->next = 0;
-  new->type = DATADEF;
-  new->align = DATA_ALIGN(bitsize);
+  atom *new = new_atom(DATADEF,DATA_ALIGN(bitsize));
+
   new->content.defb = mymalloc(sizeof(*new->content.defb));
   new->content.defb->bitsize = bitsize;
   new->content.defb->op = op;
@@ -453,11 +451,8 @@ atom *new_datadef_atom(size_t bitsize,operand *op)
 
 atom *new_srcline_atom(int line)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(LINE,1);
 
-  new->next = 0;
-  new->type = LINE;
-  new->align = 1;
   new->content.srcline = line;
   return new;
 }
@@ -465,11 +460,8 @@ atom *new_srcline_atom(int line)
 
 atom *new_opts_atom(void *o)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(OPTS,1);
 
-  new->next = 0;
-  new->type = OPTS;
-  new->align = 1;
   new->content.opts = o;
   return new;
 }
@@ -477,11 +469,8 @@ atom *new_opts_atom(void *o)
 
 atom *new_text_atom(char *txt)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(PRINTTEXT,1);
 
-  new->next = 0;
-  new->type = PRINTTEXT;
-  new->align = 1;
   new->content.ptext = txt ? txt : "";
   return new;
 }
@@ -489,11 +478,8 @@ atom *new_text_atom(char *txt)
 
 atom *new_expr_atom(expr *x)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(PRINTEXPR,1);
 
-  new->next = 0;
-  new->type = PRINTEXPR;
-  new->align = 1;
   new->content.pexpr = x;
   return new;
 }
@@ -501,11 +487,8 @@ atom *new_expr_atom(expr *x)
 
 atom *new_roffs_atom(expr *offs)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(ROFFS,1);
 
-  new->next = 0;
-  new->type = ROFFS;
-  new->align = 1;
   new->content.roffs = offs;
   return new;
 }
@@ -513,13 +496,10 @@ atom *new_roffs_atom(expr *offs)
 
 atom *new_rorg_atom(taddr raddr)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(RORG,1);
   taddr *newrorg = mymalloc(sizeof(taddr));
 
   *newrorg = raddr;
-  new->next = 0;
-  new->type = RORG;
-  new->align = 1;
   new->content.rorg = newrorg;
   return new;
 }
@@ -527,22 +507,14 @@ atom *new_rorg_atom(taddr raddr)
 
 atom *new_rorgend_atom(void)
 {
-  atom *new = mymalloc(sizeof(*new));
-
-  new->next = 0;
-  new->type = RORGEND;
-  new->align = 1;
-  return new;
+  return new_atom(RORGEND,1);
 }
 
 
 atom *new_assert_atom(expr *aexp,char *exp,char *msg)
 {
-  atom *new = mymalloc(sizeof(*new));
+  atom *new = new_atom(ASSERT,1);
 
-  new->next = 0;
-  new->type = ASSERT;
-  new->align = 1;
   new->content.assert = mymalloc(sizeof(*new->content.assert));
   new->content.assert->assert_exp = aexp;
   new->content.assert->expstr = exp;

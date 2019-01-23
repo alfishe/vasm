@@ -12,7 +12,7 @@
    be provided by the main module.
 */
 
-char *syntax_copyright="vasm oldstyle syntax module 0.12a (c) 2002-2014 Frank Wille";
+char *syntax_copyright="vasm oldstyle syntax module 0.12b (c) 2002-2014 Frank Wille";
 hashtable *dirhash;
 
 static char textname[]=".text",textattr[]="acrx";
@@ -23,6 +23,12 @@ static char bssname[]=".bss",bssattr[]="aurw";
 char commentchar=';';
 char *defsectname = textname;
 char *defsecttype = "acrwx";
+
+static char macname[] = ".mac";
+static char macroname[] = ".macro";
+static char eqname[] = ".eq";
+static char equname[] = ".equ";
+static char setname[] = ".set";
 
 static char endmname[] = ".endmacro";
 static char endrname[] = ".endrepeat";
@@ -47,7 +53,7 @@ static struct namelen dendr_dirlist[] = {
   { 5,&endrname[0] }, { 7,&endrname[0] }, { 10,&endrname[0] }, { 0,0 }
 };
 
-static int dotdirectives = 0;
+static int dotdirs = 0;
 static int autoexport = 0;
 static int parse_end = 0;
 
@@ -711,8 +717,8 @@ static void handle_rept(char *s)
 
   eol(s);
   new_repeat((int)cnt,
-             dotdirectives?drept_dirlist:rept_dirlist,
-             dotdirectives?dendr_dirlist:endr_dirlist);
+             dotdirs?drept_dirlist:rept_dirlist,
+             dotdirs?dendr_dirlist:endr_dirlist);
 }
 
 
@@ -735,7 +741,7 @@ static void handle_macro(char *s)
       eol(s);
       s = NULL;
     }
-    new_macro(name,dotdirectives?dendm_dirlist:endm_dirlist,s);
+    new_macro(name,dotdirs?dendm_dirlist:endm_dirlist,s);
     myfree(name);
   }
   else
@@ -838,6 +844,7 @@ struct {
   "dw",handle_d16,
   "dfw",handle_d16,
   "defw",handle_d16,
+  "dd",handle_d32,
 #if defined(VASM_CPU_650X) || defined(VASM_CPU_Z80) || defined(VASM_CPU_6800)
   "abyte",handle_d8_offset,
 #endif
@@ -853,11 +860,22 @@ struct {
   "byt",handle_fixedspc1,
   "wrd",handle_fixedspc2,
   "assert",handle_assert,
+#if defined(VASM_CPU_TR3200) /* Clash with IFxx instructions of TR3200 cpu */
+  "if_def",handle_ifd,
+  "if_ndef",handle_ifnd,
+  "if_eq",handle_ifeq,
+  "if_ne",handle_ifne,
+  "if_gt",handle_ifgt,
+  "if_ge",handle_ifge,
+  "if_lt",handle_iflt,
+  "if_le",handle_ifle,
+  "if_used",handle_ifused,
+  "if_nused",handle_ifnused,
+#else
   "ifdef",handle_ifd,
   "ifndef",handle_ifnd,
   "ifd",handle_ifd,
   "ifnd",handle_ifnd,
-  "if",handle_ifne,
   "ifeq",handle_ifeq,
   "ifne",handle_ifne,
   "ifgt",handle_ifgt,
@@ -866,6 +884,8 @@ struct {
   "ifle",handle_ifle,
   "ifused",handle_ifused,
   "ifnused",handle_ifnused,
+#endif
+  "if",handle_ifne,
   "else",handle_else,
   "el",handle_else,
   "endif",handle_endif,
@@ -934,7 +954,7 @@ static int check_directive(char **line)
   name = s++;
   while (ISIDCHAR(*s))
     s++;
-  if (*name=='.' && dotdirectives)
+  if (*name=='.' && dotdirs)
     name++;
   if (!find_namelen_nc(dirhash,name,s-name,&data))
     return -1;
@@ -1136,10 +1156,12 @@ void parse(void)
       if (*s == ':')    /* ':' is optional */
         s = skip(s+1);
 
-      if (!strnicmp(s,"equ",3) && isspace((unsigned char)*(s+3)))
-        equlen = 3;
-      else if (!strnicmp(s,"eq",2) && isspace((unsigned char)*(s+2)))
-        equlen = 2;
+      if (!strnicmp(s,equname+!dotdirs,3+dotdirs) &&
+          isspace((unsigned char)*(s+3+dotdirs)))
+        equlen = 3+dotdirs;
+      else if (!strnicmp(s,eqname+!dotdirs,2+dotdirs) &&
+               isspace((unsigned char)*(s+2+dotdirs)))
+        equlen = 2+dotdirs;
       else if (*s == '=')
         equlen = 1;
 
@@ -1158,27 +1180,30 @@ void parse(void)
           label = new_abs(labname,parse_expr_tmplab(&s));
         }
       }
-      else if (!strnicmp(s,"set",3) && isspace((unsigned char)*(s+3))) {
+      else if (!strnicmp(s,setname+!dotdirs,3+dotdirs) &&
+               isspace((unsigned char)*(s+3+dotdirs))) {
         /* SET allows redefinitions */
         if (*labname == current_pc_char) {
           syntax_error(10);  /* identifier expected */
         }
         else {
-          s = skip(s+3);
+          s = skip(s+3+dotdirs);
           label = new_abs(labname,parse_expr_tmplab(&s));
         }
       }
-      else if (!strnicmp(s,"mac",3) &&
-               (isspace((unsigned char)*(s+3)) || *(s+3)=='\0') ||
-               !strnicmp(s,"macro",5) &&
-               (isspace((unsigned char)*(s+5)) || *(s+5)=='\0')) {
-        char *params = skip(s + (*(s+3)=='r'?5:3));
+      else if (!strnicmp(s,macname+!dotdirs,3+dotdirs) &&
+               (isspace((unsigned char)*(s+3+dotdirs)) ||
+                *(s+3+dotdirs)=='\0') ||
+               !strnicmp(s,macroname+!dotdirs,5+dotdirs) &&
+               (isspace((unsigned char)*(s+5+dotdirs)) ||
+                *(s+5+dotdirs)=='\0')) {
+        char *params = skip(s + (*(s+3+dotdirs)=='r'?5+dotdirs:3+dotdirs));
 
         s = line;
         myfree(labname);
         if (!(labname = parse_identifier(&s)))
           ierror(0);
-        new_macro(labname,dotdirectives?dendm_dirlist:endm_dirlist,params);
+        new_macro(labname,dotdirs?dendm_dirlist:endm_dirlist,params);
         myfree(labname);
         continue;
       }
@@ -1460,7 +1485,7 @@ int init_syntax()
 int syntax_args(char *p)
 {
   if (!strcmp(p,"-dotdir")) {
-    dotdirectives = 1;
+    dotdirs = 1;
     return 1;
   }
   else if (!strcmp(p,"-autoexp")) {

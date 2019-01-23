@@ -1,5 +1,5 @@
 /* reloc.c - relocation support functions */
-/* (c) in 2010,2011 by Volker Barthelmann and Frank Wille */
+/* (c) in 2010,2011,2014 by Volker Barthelmann and Frank Wille */
 
 #include "vasm.h"
 
@@ -23,6 +23,9 @@ rlist *add_nreloc(rlist **relocs,symbol *sym,taddr addend,
 
   if (sym->sec!=NULL && (sym->sec->flags & ABSOLUTE))
     return NULL;  /* no relocation, when symbol is from an ORG-section */
+
+  /* mark symbol as referenced, so we can find unreferenced imported symbols */
+  sym->flags |= REFERENCED;
 
   r = new_nreloc();
   r->size = size;
@@ -58,9 +61,9 @@ int is_pc_reloc(symbol *sym,section *cur_sec)
    pc-relative. This is the case when it is externally defined or a label
    from a different section (so the linker has to resolve the distance). */
 {
-  if (sym->type == IMPORT)
+  if (EXTREF(sym))
     return 1;
-  else if (sym->type == LABSYM)
+  else if (LOCREF(sym))
     return (sym->sec!=cur_sec &&
             (!(sym->sec->flags & ABSOLUTE) || !(cur_sec->flags & ABSOLUTE)));
   ierror(0);

@@ -45,9 +45,10 @@ The operands are separated from the mnemonic by whitespace.
 Multiple operands are separated by comma (@code{,}).
 
 Comments are introduced by the comment character @code{#}. The rest
-of the line will be ignored. For the c16x, m68k, 650x and ARM backends,
-the comment character is @code{;} instead of @code{#}, although @code{#}
-is still allowed when being the first non-blank character on a line.
+of the line will be ignored. For the c16x, m68k, 650x, ARM, Z80, 6800
+and Jaguar-RISC backends, the comment character is @code{;}
+instead of @code{#}, although @code{#} is still allowed when being the
+first non-blank character on a line.
 
 Example:
 
@@ -86,16 +87,29 @@ See @code{.byte}.
 @item  .asciiz "<string1>"[,"<string2>"...]
 See @code{.string}.    
 
-@item .align <bit_count>[,<fill>]
-      Insert as much fill bytes as required to reach an address where
-      <bit_count> low order bits are zero. For example @code{.align 2} would
-      make an alignment to the next 32-bit boundary.
-      Note that this directive
+@item .align <bitorbyte_count>[,<fill>][,<maxpad>]
+      Depending on the current CPU backend @code{.align} either behaves
+      like @code{.balign} (x86) or like @code{.p2align} (PPC).
 
-@item .balign <byte_count>[,<fill>]
+@item .balign <byte_count>[,<fill>][,<maxpad>]
       Insert as much fill bytes as required to reach an address which
       is dividable by <byte_count>. For example @code{.balign 2} would
       make an alignment to the next 16-bit boundary.
+      The padding bytes are initialized by <fill>, when given. The optional
+      third argument defines a maximum number of padding bytes to use. When
+      more are needed then the alignment is not done at all.
+
+@item .balignl <bit_count>[,<fill>][,<maxpad>]
+      Works like @code{.balign}, with the only difference that the optional
+      fill value can be specified as a 32-bit word. Padding locations which
+      are not already 32-bit aligned, will cause a warning and padded by
+      zero-bytes.
+
+@item .balignw <bit_count>[,<fill>][,<maxpad>]
+      Works like @code{.balign}, with the only difference that the optional
+      fill value can be specified as a 16-bit word. Padding locations which
+      are not already 16-bit aligned, will cause a warning and padded by
+      zero-bytes.
 
 @item .byte <exp1>[,<exp2>,"<string1>"...]
       Assign the integer or string constant operands into successive
@@ -249,6 +263,26 @@ See @code{.string}.
       When <exp> starts with a current-pc symbol and a plus (@code{+})
       operator, then the directive behaves like @code{.space}.
 
+@item .p2align <bit_count>[,<fill>][,<maxpad>]
+      Insert as much fill bytes as required to reach an address where
+      <bit_count> low order bits are zero. For example @code{.p2align 2} would
+      make an alignment to the next 32-bit boundary.
+      The padding bytes are initialized by <fill>, when given. The optional
+      third argument defines a maximum number of padding bytes to use. When
+      more are needed then the alignment is not done at all.
+
+@item .p2alignl <bit_count>[,<fill>][,<maxpad>]
+      Works like @code{.p2align}, with the only difference that the optional
+      fill value can be specified as a 32-bit word. Padding locations which
+      are not already 32-bit aligned, will cause a warning and padded by
+      zero-bytes.
+
+@item .p2alignw <bit_count>[,<fill>][,<maxpad>]
+      Works like @code{.p2align}, with the only difference that the optional
+      fill value can be specified as a 16-bit word. Padding locations which
+      are not already 16-bit aligned, will cause a warning and padded by
+      zero-bytes.
+
 @item .quad <exp1>[,<exp2>...]
       If the current section location counter is not on a quadword
       boundary, advance it to the next quadword boundary. Then, assign
@@ -332,6 +366,9 @@ See @code{.string}.
 
 @item .short <exp1>[,<exp2>...]
       See @code{.half}.
+
+@item .skip <exp>[,<fill>]
+      Insert <exp> zero or <fill> bytes into the current section.
  
 @item .space <exp>[,<fill>]
       Insert <exp> zero or <fill> bytes into the current section.
@@ -347,7 +384,10 @@ See @code{.string}.
       Add an stab-entry for debugging, without symbol-string and value.
 
 @item .string "<string1>"[,"<string2>"...]
-        Like @code{.byte}, but adds a terminating zero-byte.
+      Like @code{.byte}, but adds a terminating zero-byte.
+
+@item .swbeg <op>
+      Just for compatibility. Do nothing.
 
 @item .type <symbol>,<type>
       Set type of symbol called <symbol> to <type>, which must be one of:
@@ -389,6 +429,9 @@ See @code{.string}.
       If the current section location counter is not on a word boundary
       advance it to the next word boundary. Then assign the values of the
       operands into successive words of memory in the current section. 
+
+@item .zero <exp>[,<fill>]
+      Insert <exp> zero or <fill> bytes into the current section.
 
 @end table
 
@@ -452,4 +495,8 @@ This module has the following error messages:
 @item 1019: syntax error
 @item 1020: unexpected endr without rept
 @item 1021: symbol <%s> already defined with %s scope
+@item 1022: .fail %lld encountered
+@item 1023: .fail %lld encountered
+@item 1024: alignment too big
+
 @end itemize

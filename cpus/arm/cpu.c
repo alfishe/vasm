@@ -10,7 +10,7 @@ mnemonic mnemonics[] = {
 };
 int mnemonic_cnt = sizeof(mnemonics)/sizeof(mnemonics[0]);
 
-char *cpu_copyright = "vasm ARM cpu backend 0.3 (c) 2004,2006,2010,2011,2014 Frank Wille";
+char *cpu_copyright = "vasm ARM cpu backend 0.4 (c) 2004,2006,2010,2011,2014 Frank Wille";
 char *cpuname = "ARM";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -29,11 +29,13 @@ static const char *condition_codes = "eqnecsccmiplvsvchilsgeltgtlealnvhsloul";
 static const char *addrmode_strings[] = {
   "da","ia","db","ib",
   "fa","fd","ea","ed",
-  "bt","tb","sb","sh","t","b","h","s","l",NULL,"<none>"
+  "bt","tb","sb","sh","t","b","h","s","l",
+  "p",NULL,"<none>"
 };
 enum {
   AM_DA=0,AM_IA,AM_DB,AM_IB,AM_FA,AM_FD,AM_EA,AM_ED,
-  AM_BT,AM_TB,AM_SB,AM_SH,AM_T,AM_B,AM_H,AM_S,AM_L,AM_NULL,AM_NONE
+  AM_BT,AM_TB,AM_SB,AM_SH,AM_T,AM_B,AM_H,AM_S,AM_L,
+  AM_P,AM_NULL,AM_NONE
 };
 
 #define NUM_SHIFTTYPES 6
@@ -106,12 +108,14 @@ char *parse_instruction(char *s,int *inst_len,char **ext,int *ext_len,
 
   else {  /* ARM mode - we might have up to 2 different qualifiers */
     int len = s - inst;
+    char c = tolower((unsigned char)*inst);
 
     if (len > 2) {
-      if (*inst=='b' && strncmp(inst,"bic",3) && (len==3 || len==4)) {
+      if (c=='b' && strnicmp(inst,"bic",3) && (len==3 || len==4)) {
         *inst_len = len - 2;
       }
-      else if ((*inst=='u' || *inst=='s') && *(inst+1)=='m' && len>=5) {
+      else if ((c=='u' || c=='s') &&
+               tolower((unsigned char)*(inst+1))=='m' && len>=5) {
         *inst_len = 5;
       }
       else
@@ -125,7 +129,7 @@ char *parse_instruction(char *s,int *inst_len,char **ext,int *ext_len,
           const char *cc = condition_codes;
 
           while (*cc) {
-            if (*p==*cc && *(p+1)==*(cc+1))
+            if (!strnicmp(p,cc,2))
               break;
             cc += 2;
           }
@@ -140,12 +144,12 @@ char *parse_instruction(char *s,int *inst_len,char **ext,int *ext_len,
           const char **am = addrmode_strings;
 
           do {
-            if (len==strlen(*am) && !strncmp(*am,p,len))
+            if (len==strlen(*am) && !strnicmp(*am,p,len))
               break;
             am++;
           }
           while (*am);
-          if (*am!=NULL || (len==1 && *p=='s')) {
+          if (*am!=NULL || (len==1 && tolower((unsigned char)*p)=='s')) {
             ext[cnt] = p;
             ext_len[cnt++] = len;
           }
@@ -943,7 +947,7 @@ static uint32_t get_condcode(instruction *ip)
     uint32_t code = 0;
 
     while (*cc) {
-      if (*q==*cc && *(q+1)==*(cc+1) && *(q+2)=='\0')
+      if (!strnicmp(q,cc,2) && *(q+2)=='\0')
         break;
       cc += 2;
       code++;
@@ -975,7 +979,7 @@ static int get_addrmode(instruction *ip)
     int mode = AM_DA;
 
     do {
-      if (!strcmp(*am,q))
+      if (!stricmp(*am,q))
         break;
       am++;
       mode++;
@@ -1009,9 +1013,14 @@ size_t eval_arm_operands(instruction *ip,section *sec,taddr pc,
 
     *insn = mnemo->ext.opcode | get_condcode(ip);
 
-    if (mnemo->ext.flags & SETCC) {
-      if (am == AM_S)
-        *insn |= 0x00100000;  /* set-condition-codes flag */
+    if ((mnemo->ext.flags & SETCC)!=0 && am==AM_S)
+      *insn |= 0x00100000;  /* set-condition-codes flag */
+
+    if ((mnemo->ext.flags & SETPSR)!=0 && am==AM_P) {
+      /* Rd = R15 for changing the PSR. Recommended for ARM2/250/3 only. */
+      *insn |= 0x0000f000;
+      if (cpu_type & ~AA2)
+        cpu_error(28);  /* deprecated on 32-bit architectures */
     }
 
     if (!strcmp(mnemo->name,"ldr") || !strcmp(mnemo->name,"str")) {
@@ -1353,7 +1362,7 @@ size_t eval_arm_operands(instruction *ip,section *sec,taddr pc,
 
         if (base) {
           if (btype == BASE_OK) {
-            if (base->type == IMPORT) {
+            if (EXTREF(base)) {
               if (!aa4ldst) {
                 /* @@@ does this make any sense? */
                 *insn |= 0x00800000;  /* only UP */

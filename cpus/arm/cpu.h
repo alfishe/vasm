@@ -1,5 +1,5 @@
 /* cpu.h ARM cpu-description header-file */
-/* (c) in 2004 by Frank Wille */
+/* (c) in 2004,2014 by Frank Wille */
 
 #define LITTLEENDIAN (!arm_be_mode)
 #define BIGENDIAN (arm_be_mode)
@@ -153,6 +153,7 @@ typedef struct {
 #define NOPCR03   (0x00000020)  /* R15 is not allowed for Rm (3..0) */
 #define NOPCWB    (0x00000040)  /* R15 is not allowed in Write-Back mode */
 #define SETCC     (0x00000100)  /* instruction supports S-bit */
+#define SETPSR    (0x00000200)  /* instruction supports P-bit */
 #define THUMB     (0x10000000)  /* THUMB instruction */
 
 

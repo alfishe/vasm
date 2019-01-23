@@ -42,6 +42,10 @@ typedef struct {
    0-15: f_i or add-reg for vload/vstore
    16-18: rep
    20: setf
+   
+   for 80-bit 'A' registers, 'dreg' is formatted as
+   0-5: flags
+   6-9: ra_x
 */
 
 /* operand-types */
@@ -52,6 +56,7 @@ enum {
   OP_LR,
   OP_MREG,
   OP_VREG,
+  OP_VREGA80,
   OP_VREGM,
   OP_VREGMM,
   OP_ABS,
@@ -113,11 +118,19 @@ enum {
   EN_ADD48,
   EN_VLOAD48,
   EN_VSTORE48,
+  EN_VREAD48,
+  EN_VWRITE48,
+  EN_VREADI48,
+  EN_VWRITEI48,
   EN_VARITHR48,
   EN_VARITHI48,
   EN_ADDCMPB64,
   EN_VLOAD80,
   EN_VSTORE80,
+  EN_VREAD80,
+  EN_VWRITE80,
+  EN_VREADI80,
+  EN_VWRITEI80,
   EN_VARITHR80,
   EN_VARITHI80,
 };

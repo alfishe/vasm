@@ -569,10 +569,15 @@ int type_of_expr(expr *tree)
   if(tree==NULL)
     return 0;
   ltype=tree->type;
-  if(ltype==NUM||ltype==HUG||ltype==FLT)
+  if(ltype==SYM){
+    if(tree->c.sym->flags&INEVAL)
+      general_error(18,tree->c.sym->name);
+    tree->c.sym->flags|=INEVAL;
+    ltype=tree->c.sym->type==EXPRESSION?type_of_expr(tree->c.sym->expr):NUM;
+    tree->c.sym->flags&=~INEVAL;
     return ltype;
-  else if(ltype==SYM)
-    return tree->c.sym->type==EXPRESSION?type_of_expr(tree->c.sym->expr):NUM;
+  }else if(ltype==NUM||ltype==HUG||ltype==FLT)
+    return ltype;
   ltype=type_of_expr(tree->left);
   rtype=type_of_expr(tree->right);
   return rtype>ltype?rtype:ltype;
@@ -915,12 +920,12 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
   case SUB:
     find_base(tree->left,&lsym,sec,pc);
     find_base(tree->right,&rsym,sec,pc);
-    if(cnst==0&&lsym!=NULL&&rsym!=NULL&&rsym->type==LABSYM){
-      if(lsym->type==LABSYM&&lsym->sec==rsym->sec){
+    if(cnst==0&&lsym!=NULL&&rsym!=NULL&&LOCREF(rsym)){
+      if(LOCREF(lsym)&&lsym->sec==rsym->sec){
         /* l2-l1 is constant when both have a valid symbol-base, and both
            symbols are LABSYMs from the same section, e.g. (sym1+x)-(sym2-y) */
         cnst=1;
-      }else if(rsym->sec==sec&&(lsym->type==IMPORT||lsym->type==LABSYM)){
+      }else if(rsym->sec==sec&&(EXTREF(lsym)||LOCREF(lsym))){
         /* Difference between symbols from different section or between an
            external symbol and a symbol from the current section can be
            represented by a REL_PC, so we calculate the addend. */
@@ -1010,7 +1015,7 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
       tree->c.sym->flags|=INEVAL;
       cnst=eval_expr(tree->c.sym->expr,&val,sec,pc);
       tree->c.sym->flags&=~INEVAL;
-    }else if(tree->c.sym->type==LABSYM){
+    }else if(LOCREF(tree->c.sym)){
       if(tree->c.sym==cpc&&sec!=0){
         cpc->sec=sec;
         cpc->pc=pc;
@@ -1145,7 +1150,7 @@ int eval_expr_huge(expr *tree,thuge *result)
       if(!ok) return 0;
     }
 #if 0 /* all relocations should be representable by taddr */
-    else if(tree->c.sym->type==IMPORT)
+    else if(EXTREF(tree->c.sym))
       val=huge_zero();
 #endif
     else
@@ -1274,7 +1279,7 @@ static int find_abs_base(expr *tree,symbol **base)
       ok=find_abs_base(tree->c.sym->expr,base);
       tree->c.sym->flags&=~INEVAL;
       return ok;
-    }else if(tree->c.sym->type==LABSYM){
+    }else if(LOCREF(tree->c.sym)){
       if(tree->c.sym->sec!=NULL&&(tree->c.sym->sec->flags&ABSOLUTE)){
         *base=tree->c.sym;
         return 1;
@@ -1335,8 +1340,7 @@ static int _find_base(expr *p,symbol **base,section *sec,taddr pc)
       return BASE_OK;
     if(_find_base(p->left,base,sec,pc)==BASE_OK&&
        _find_base(p->right,&pcsym,sec,pc)==BASE_OK) {
-      if(pcsym->type==LABSYM&&pcsym->sec==sec&&
-         ((*base)->type==LABSYM||(*base)->type==IMPORT))
+      if(LOCREF(pcsym)&&pcsym->sec==sec&&(LOCREF(*base)||EXTREF(*base)))
         return BASE_PCREL;
     }
   }
@@ -1358,7 +1362,7 @@ int find_base(expr *p,symbol **base,section *sec,taddr pc)
     if(find_abs_base(p,base)){
         /* a base label from an absolute ORG section */
       if(*base!=NULL)
-        return (*base)->type==IMPORT?BASE_ILLEGAL:BASE_OK;
+        return EXTREF(*base)?BASE_ILLEGAL:BASE_OK;
     }
   }
   return _find_base(p,base,sec,pc);

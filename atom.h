@@ -44,14 +44,14 @@ struct dblock {
   rlist *relocs;
 };
 
-#define SB_MAXSIZE 8
 struct sblock {
   size_t space;
   expr *space_exp;  /* copied to space, when evaluated as constant */
   size_t size;
-  unsigned char fill[SB_MAXSIZE];
+  uint8_t fill[MAXPADBYTES];
   expr *fill_exp;   /* copied to fill, when evaluated - may be NULL */
   rlist *relocs;
+  taddr maxalignbytes;
 };
 
 typedef struct assertion {

@@ -23,6 +23,7 @@
 #define WEAK (1<<6)
 #define VASMINTERN (1<<7)
 #define PROTECTED (1<<8)
+#define REFERENCED (1<<9)
 #define RSRVD_S (1L<<24)    /* bits 24..27 are reserved for syntax modules */
 #define RSRVD_O (1L<<28)    /* bits 28..31 are reserved for output modules */
 
@@ -38,6 +39,10 @@ struct symbol {
   taddr align;
   uint32_t idx; /* usable by output module */
 };
+
+/* type of symbol references */
+#define LOCREF(symp) ((symp)->type==LABSYM&&!((symp)->flags&WEAK))
+#define EXTREF(symp) ((symp)->type==IMPORT||((symp)->flags&WEAK))
 
 
 #ifdef HAVE_REGSYMS

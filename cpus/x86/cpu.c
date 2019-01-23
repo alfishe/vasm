@@ -692,7 +692,7 @@ static void optimize_jump(instruction *ip,operand *op,section *sec,
       general_error(38);  /* illegal relocation */
       return;
     }
-    label_in_sec = (base->type==LABSYM) && (base->sec==sec);
+    label_in_sec = LOCREF(base) && (base->sec==sec);
   }
   else
     label_in_sec = 0;

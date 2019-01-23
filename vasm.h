@@ -18,6 +18,8 @@ typedef struct source source;
 typedef struct listing listing;
 typedef struct regsym regsym;
 
+#define MAXPADBYTES 8  /* max. pattern size to pad alignments */
+
 #include "cpu.h"
 #include "symbol.h"
 #include "reloc.h"
@@ -25,9 +27,9 @@ typedef struct regsym regsym;
 #include "symtab.h"
 #include "error.h"
 #include "expr.h"
-#include "supp.h"
 #include "parse.h"
 #include "atom.h"
+#include "supp.h"
 
 #if defined(BIGENDIAN)&&!defined(LITTLEENDIAN)
 #define LITTLEENDIAN (!BIGENDIAN)
@@ -107,6 +109,8 @@ struct section {
   atom *first;
   atom *last;
   taddr align;
+  uint8_t pad[MAXPADBYTES];
+  int padbytes;
   uint32_t flags;
   taddr org;
   taddr pc;
@@ -235,6 +239,9 @@ char *const_suffix(char *,char *);
 char *get_local_label(char **);
 
 /* provided by output_xxx.c */
+extern int tos_hisoft_dri;
+extern int hunk_onlyglobal;
+
 int init_output_test(char **,void (**)(FILE *,section *,symbol *),int (**)(char *));
 int init_output_elf(char **,void (**)(FILE *,section *,symbol *),int (**)(char *));
 int init_output_bin(char **,void (**)(FILE *,section *,symbol *),int (**)(char *));

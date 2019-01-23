@@ -361,12 +361,12 @@ static utaddr make_relocs(rlist *rl,utaddr pc,
 
       if (rtype = get_reloc_type(&rl,&offset,&addend,&refsym)) {
 
-        if (refsym->type == LABSYM) {
+        if (LOCREF(refsym)) {
           /* this is a local relocation */
           addrel(pc+offset,addend,refsym->sec->idx,rtype);
           ro += elfrelsize;
         }
-        else if (refsym->type == IMPORT) {
+        else if (EXTREF(refsym)) {
           /* this is an external symbol reference */
           unsigned idx = findelfsymbol(refsym->name);
 
@@ -484,9 +484,7 @@ static void make_reloc_sections(section *sec,
       utaddr pc=0,npc,basero=roffset;
 
       for (a=secp->first; a; a=a->next) {
-        int align = a->align;
-
-        npc = ((pc + align-1) / align) * align;
+        npc = pcalign(a,pc);
         if (a->type == DATA)
           roffset += make_relocs(a->content.db->relocs,npc,newsym,addrel);
         if (a->type == SPACE)
@@ -521,8 +519,6 @@ static void write_section_data(FILE *f,section *sec)
     if (secp->idx && get_sec_type(secp)!=SHT_NOBITS) {
       atom *a;
       utaddr pc=0,npc;
-      unsigned n;
-      int align;
 
       if (secp->idx == stabidx) {
         /* patch compilation unit header */
@@ -537,10 +533,7 @@ static void write_section_data(FILE *f,section *sec)
       }
 
       for (a=secp->first; a; a=a->next) {
-        align = a->align;
-        npc = ((pc + align-1) / align) * align;
-        for (n=npc-pc; n>0; n--)
-          fw8(f,0);
+        npc = fwpcalign(f,a,secp,pc);
 
         if (a->type == DATA) {
           fwdata(f,a->content.db->data,a->content.db->size);

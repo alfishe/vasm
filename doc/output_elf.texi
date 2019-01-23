@@ -3,7 +3,7 @@ selected with the @option{-Felf} option.
 
 @section Legal
 
-    This module is copyright in 2002-2011 by Frank Wille.
+    This module is copyright in 2002-2012 by Frank Wille.
 
     This archive may be redistributed without modifications and used
     for non-commercial purposes.

@@ -216,10 +216,16 @@ vasm performs the following optimizations:
         All options are initially set to be Devpac compatible. Which means
         that all optimizations are disabled, no debugging symbols will be
         written and vasm will warn about any optimization being done.
+        When symbol output is enabled by {opt d+}, then the TOS symbol
+        table defaults to standard DRI format (limited to 8 characters).
         Shift-right operations are performed using an unsigned 32-bit value.
         Other options are the same as vasm's defaults.
         The symbol @code{__G2} is defined, which contains information
         about the selected cpu type.
+        The symbol @code{__LK} reflects the type of output file generated.
+        Which is 0 for TOS executables, 4 for Amiga executables and 3 for
+        Amiga object files. All other formats are represented by 99, as
+        they are unknown to Devpac.
         It will also automatically enable @option{-guess-ext}.
 
     @item -elfregs
@@ -413,7 +419,8 @@ directives:
         Case-sensitivity for all symbols, instructions and macros.
         Default is on.
       @item d
-        Include all symbols for debugging in the output file.
+        Include all symbols for debugging in the output file. May also
+        generate line debugging information in some output formats.
         Default is off in Devpac-comptability mode, otherwise on.
       @item o
         Enable all optimizations (o1 to o12), or disable all optimizations.
@@ -464,12 +471,11 @@ directives:
         Show assembler warnings.
         Default is on.
       @item x
-        Ignored, as it has very different meaning in the Atari and Amiga
-        versions of Devpac. On Atari it enabled an extended debugging format,
-        which allowed symbols with more than 8 character (vasm has no
-        limitation here, so this is useless). On Amiga it made the assembler
-        include only those symbols which were exported by @code{xdef}. So
-        @code{x+} would be the same as @code{d-}.
+        For Amiga hunk format objects @code{x+} strips local symbols from
+        the symbol table (symbols without @code{xdef}).
+        For Atari TOS executables this will enable the extended (HiSoft)
+        DRI symbol table format, which allows symbols with up to 22
+        characters. DRI standard only supports 8 characters.
    @end table
 
    Also the following Devpac3-style options are supported:
@@ -910,6 +916,7 @@ This module has the following error messages:
 @item 2015: missing outer displacement
 @item 2016: %c expected
 @item 2017: can't use PC register as index
+@item 2018: double registers in list
 @item 2019: data register required
 @item 2020: illegal bitfield width/offset
 @item 2021: constant integer expression required

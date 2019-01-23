@@ -303,7 +303,7 @@ static taddr reloffset(expr *tree,section *sec,taddr pc)
     val=tree->c.val;
   }else{
     btype=find_base(tree,&sym,sec,pc);
-    if(btype!=BASE_OK||sym->type!=LABSYM||sym->sec!=sec)
+    if(btype!=BASE_OK||!LOCREF(sym)||sym->sec!=sec)
       val=0xffff;
     else{
       eval_expr(tree,&val,sec,pc);

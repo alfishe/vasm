@@ -41,8 +41,9 @@ void conv2ieee128(int,uint8_t *,tfloat);
 void fw8(FILE *,uint8_t);
 void fw32(FILE *,uint32_t,int);
 void fwdata(FILE *,void *,size_t);
+void fwsblock(FILE *,sblock *);
 void fwalign(FILE *,taddr,taddr);
-int fwsblock(FILE *,sblock *);
+taddr fwpcalign(FILE *,atom *,section *,taddr);
 size_t filesize(FILE *);
 char *convert_path(char *);
 
@@ -54,6 +55,7 @@ char *strtolower(char *);
 
 taddr balign(taddr,taddr);
 taddr palign(taddr,taddr);
+taddr pcalign(atom *,taddr);
 
 taddr get_sym_value(symbol *);
 taddr get_sym_size(symbol *);

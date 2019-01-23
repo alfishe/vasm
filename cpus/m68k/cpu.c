@@ -24,7 +24,7 @@ struct cpu_models models[] = {
 int model_cnt = sizeof(models)/sizeof(models[0]);
 
 
-char *cpu_copyright="vasm M68k/CPU32/ColdFire cpu backend 2.0a (c) 2002-2014 Frank Wille";
+char *cpu_copyright="vasm M68k/CPU32/ColdFire cpu backend 2.0d (c) 2002-2014 Frank Wille";
 char *cpuname = "M68k";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -82,6 +82,7 @@ static char cpu_name[] = "__CPU";
 static char mmu_name[] = "__MMU";
 static char fpu_name[] = "__FPU";
 static char g2_name[] = "__G2";
+static char lk_name[] = "__LK";
 
 static int OC_JMP,OC_JSR,OC_MOVEQ,OC_MOV3Q,OC_LEA,OC_PEA,OC_SUBA,OC_CLR;
 static int OC_ST,OC_ADDQ,OC_SUBQ,OC_ADDA,OC_ADD,OC_BRA,OC_BSR,OC_TST;
@@ -705,17 +706,28 @@ static uint16_t scan_Rnlist(char **start)
 
       if (rangemode) {
         /* lastreg...reg describes a range of registers */
+        list &= ~(1<<lastreg);
         if (lastreg > reg) {
           rx = reg;
           reg = lastreg;
           lastreg = rx;
         }
-        for (rx=lastreg; rx<=reg; rx++)
-          list |= 1<<rx;
+        else if (lastreg == reg)
+          cpu_error(17);  /* Rn-Rn */
+        for (rx=lastreg; rx<=reg; rx++) {
+          if (list & (1<<rx))
+            cpu_error(17);  /* double register in list */
+          else
+            list |= 1<<rx;
+        }
         rangemode = 0;
       }
-      else
-        list |= 1<<reg;
+      else {
+        if (list & (1<<reg))
+          cpu_error(17);  /* double register in list */
+        else
+          list |= 1<<reg;
+      }
 
       lastreg = reg;
       p = skip(p);
@@ -1837,7 +1849,7 @@ static void optimize_oper(operand *op,struct optype *ot,section *sec,
   size16[1] = op->extval[1]>=-0x8000 && op->extval[1]<=0x7fff;
   pcdisp = op->extval[0] - cpc;
   pcdisp16 = (op->base[0]==NULL) ? 0 : (pcdisp>=-0x8000 && pcdisp<=0x7fff);
-  undef = (op->base[0]==NULL) ? 0 : op->base[0]->type==IMPORT;
+  undef = (op->base[0]==NULL) ? 0 : EXTREF(op->base[0]);
 
   if (bopt) {  /* base displacement optimizations allowed */
 
@@ -1918,7 +1930,7 @@ static void optimize_oper(operand *op,struct optype *ot,section *sec,
           cpu_error(50,"abs.w->abs.l");
       }
       else if (op->base[0]) {
-        if (typechk && op->base[0]->type == LABSYM) {
+        if (typechk && LOCREF(op->base[0])) {
           /* label.w --> label.l */
           op->reg = REG_AbsLong;
           if (final)
@@ -2280,6 +2292,15 @@ static void incr_ea(operand *op,taddr offset,int final)
     if (op->mode == MODE_AnIndir)
       op->mode = MODE_An16Disp;
   }
+}
+
+
+static int aindir_in_list(operand *op,taddr list)
+/* tests if operand is (An)+ or -(An) and An is present in register list */
+{
+  if (op->mode==MODE_AnPostInc || op->mode==MODE_AnPreDec)
+    return (list & (1 << (REGAn + REGget(op->reg)))) != 0;
+  return 0;
 }
 
 
@@ -2698,7 +2719,8 @@ dontswap:
       }
       else if (regs == 1) {
         /* a single register - MOVEM <ea>,Rn --> MOVE <ea>,Rn */
-        if (opt_movem || (!(list&0xff) && o==1)) {
+        if ((opt_movem || (!(list&0xff) && o==1)) &&
+            !aindir_in_list(ip->op[o^1],list)) {
           signed char r = bfffo(list,0,16);
 
           ip->code = OC_MOVE;
@@ -2717,7 +2739,8 @@ dontswap:
         taddr offs = ext=='l' ? 4 : 2;
 
         if ((opt_movem || (!(list&0xff) && o==1)) &&
-            test_incr_ea(ip->op[o^1],offs)) {
+            test_incr_ea(ip->op[o^1],offs) &&
+            !aindir_in_list(ip->op[o^1],list)) {
           signed char r = bfffo(list,0,16);
           instruction *ip2;
 
@@ -2923,7 +2946,7 @@ dontswap:
           ip->op[0]->reg = REG_Immediate;
           ip->op[0]->flags |= FL_NoOpt;
         }
-        else if (opt_speed) {
+        else {
           instruction *ip2;
  
           ip2 = ip_doubleop(OC_ADDA,l_str,
@@ -3261,7 +3284,7 @@ dontswap:
     if (opt_pc && !(ip->op[0]->flags & FL_NoOpt) &&
         ip->op[0]->mode==MODE_Extended &&
         (ip->op[0]->reg==REG_AbsLong || ip->op[0]->reg==REG_PC16Disp) &&
-        ip->op[0]->base[0]->type==LABSYM && ip->op[0]->base[0]->sec==sec) {
+        LOCREF(ip->op[0]->base[0]) && ip->op[0]->base[0]->sec==sec) {
       /* JMP/JSR label --> BRA/BSR label */
       taddr diff = val - cpc;
 
@@ -3291,7 +3314,7 @@ dontswap:
     }
     else if (opt_sc && !(ip->op[0]->flags & FL_NoOpt) &&
         ip->op[0]->mode==MODE_Extended && ip->op[0]->reg==REG_AbsLong &&
-        ip->op[0]->base[0]->type==IMPORT) {
+        EXTREF(ip->op[0]->base[0])) {
       /* JMP/JSR extlabel --> JMP/JSR extlabel(PC) */
       ip->op[0]->reg = REG_PC16Disp;
       if (final && warn_opts>1)
@@ -3302,7 +3325,7 @@ dontswap:
   else if ((oc & 0xf000)==0x6000 && !abs) {
     /* Bcc label */
     if (opt_bra && ((ipflags&IFL_UNSIZED) || opt_allbra) &&
-        ip->op[0]->base[0]->type==LABSYM && ip->op[0]->base[0]->sec==sec) {
+        LOCREF(ip->op[0]->base[0]) && ip->op[0]->base[0]->sec==sec) {
       taddr diff = val - cpc;
       int resolvewarn = (sec->flags&RESOLVE_WARN)!=0;
 
@@ -3399,7 +3422,7 @@ dontswap:
       }
     }
     else if (opt_branop && oc==0x6000 && val-cpc==0 &&
-             (ext=='b' || ext=='s') && ip->op[0]->base[0]->type==LABSYM &&
+             (ext=='b' || ext=='s') && LOCREF(ip->op[0]->base[0]) &&
              ip->op[0]->base[0]->sec==sec) {
       /* short-branch with zero-distance which cannot be optimized
          is turned into a NOP */
@@ -3412,7 +3435,7 @@ dontswap:
         cpu_error(57);  /* bra.b *+2 turned into a nop */
     }
     else if (opt_brajmp && ip->op[0]->base[0]->sec!=sec &&
-             ip->op[0]->base[0]->type==LABSYM) {
+             LOCREF(ip->op[0]->base[0])) {
       /* reference to label from different section */
       ip->qualifiers[0] = emptystr;
       if (oc < 0x6200) {
@@ -3447,7 +3470,7 @@ dontswap:
   else if ((oc & 0xff80)==0xf080 && ip->code!=OC_FNOP) {
     /* cpBcc label */
     if (opt_bra && ((ipflags&IFL_UNSIZED) || opt_allbra) &&
-        ip->op[0]->base[0]->type==LABSYM && ip->op[0]->base[0]->sec==sec) {
+        LOCREF(ip->op[0]->base[0]) && ip->op[0]->base[0]->sec==sec) {
       taddr diff = val - cpc;
 
       switch (lastsize) {
@@ -3918,7 +3941,7 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
       /* d16(An) needs one extension word */
       if (op->base[0]) {
         rsize = 16;
-        if ((op->base[0]->type==IMPORT && op->reg!=sdreg) ||
+        if ((EXTREF(op->base[0]) && op->reg!=sdreg) ||
             op->basetype[0]==BASE_PCREL)
           rtype = REL_ABS;
         else if (op->basetype[0]==BASE_OK)
@@ -3949,8 +3972,8 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
             cpu_error(29);  /* displacement out of range */
           if (op->base[0]) {
             rsize = 16;
-            if (op->base[0]->type==IMPORT ||
-                (op->base[0]->type==LABSYM && op->basetype[0]==BASE_PCREL))
+            if (EXTREF(op->base[0]) ||
+                (LOCREF(op->base[0]) && op->basetype[0]==BASE_PCREL))
               rtype = REL_ABS;
             else
               cpu_error(30);  /* absolute displacement expected */
@@ -3969,8 +3992,8 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
             cpu_error(29);  /* displacement out of range */
           if (op->base[1]) {
             orsize = 16;
-            if (op->base[1]->type==IMPORT ||
-                (op->base[1]->type==LABSYM && op->basetype[1]==BASE_PCREL))
+            if (EXTREF(op->base[1]) ||
+                (LOCREF(op->base[1]) && op->basetype[1]==BASE_PCREL))
               ortype = REL_ABS;
             else
               cpu_error(30);  /* absolute displacement expected */
@@ -3991,8 +4014,8 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
           cpu_error(29);  /* displacement out of range */
         if (op->base[0]) {
           rsize = 8;
-          if (op->base[0]->type==IMPORT ||
-              (op->base[0]->type==LABSYM && op->basetype[0]==BASE_PCREL))
+          if (EXTREF(op->base[0]) ||
+              (LOCREF(op->base[0]) && op->basetype[0]==BASE_PCREL))
             rtype = REL_ABS;
           else
             cpu_error(30);  /* absolute displacement expected */
@@ -4062,7 +4085,7 @@ static unsigned char *write_ea_ext(dblock *db,unsigned char *d,operand *op,
             if (typechk && (op->extval[1]<-0x8000 || op->extval[1]>0x7fff))
               cpu_error(29);  /* displacement out of range */
             if (op->base[1]) {
-              if (op->base[1]->type==IMPORT) {
+              if (EXTREF(op->base[1])) {
                 ortype = REL_ABS;
                 orsize = 16;
               }
@@ -4640,8 +4663,23 @@ int init_cpu()
     set_internal_abs(mmu_name,(cpu_type & mmmu)!=0);
     set_internal_abs(fpu_name,(cpu_type & mfloat)?fpu_id:0);
   }
-  if (devpac_compat)
+  if (devpac_compat) {
+    taddr f = 99;
+
+    /* __G2 contains host, version and cpu information */
     set_g2_symbol();
+
+    /* __LK is 0 for TOS executables, 1 for GST-, 2 for DRI-linkable,
+       3 for Amiga-linkable, 4 for Amiga executable.
+       Set it to 99 when creating an object file of unknown format. */
+    if (!strcmp(output_format,"tos"))
+      f = 0;
+    else if (!strcmp(output_format,"hunkexe"))
+      f = 4;
+    else if (!strcmp(output_format,"hunk"))
+      f = 3;
+    set_internal_abs(lk_name,f);
+  }
   set_internal_abs(vasmsym_name,cpu_type&CPUMASK);
 
   return 1;
@@ -4711,6 +4749,7 @@ int cpu_args(char *arg)
   if (!strcmp(p,"-devpac")) {
     /* set all options to Devpac-compatible defaults */
     devpac_compat = 1;
+    tos_hisoft_dri = 0;  /* no extended symbol names until OPT X+ is given */
     clear_all_opts();
     no_symbols = 1;
     warn_opts = 2;
@@ -4977,7 +5016,11 @@ static char *devpac_option(char *s)
     return s+4;
   }
   else if (!strnicmp(s,"xdebug",6)) {
-    return s+6;  /* ignore */
+    if (flag)
+      no_symbols = 0;
+    tos_hisoft_dri = flag;  /* extended symbol names for Atari */
+    hunk_onlyglobal = flag; /* only xdef-symbols in objects for Amiga */
+    return s+6;
   }
   else if (!flag)
     goto devpac_err;
@@ -5022,7 +5065,10 @@ static char *devpac_option(char *s)
           no_symbols = !flag;
           break;
         case 'x':
-          /* ignored - different meaning on Amiga and Atari */
+          if (flag)
+            no_symbols = 0;
+          tos_hisoft_dri = flag;  /* extended symbol names for Atari */
+          hunk_onlyglobal = flag; /* only xdef-symbols in objects for Amiga */
           break;
         case 'l':
           if (!flag)

@@ -4,7 +4,8 @@
 #include "vasm.h"
 #include "output_tos.h"
 #if defined(VASM_CPU_M68K)
-static char *copyright="vasm tos output module 0.9 (c) 2009-2014 Frank Wille";
+static char *copyright="vasm tos output module 0.9a (c) 2009-2014 Frank Wille";
+int tos_hisoft_dri = 1;
 
 static int tosflags,textbasedsyms;
 static int max_relocs_per_atom;
@@ -72,10 +73,12 @@ static int tos_initwrite(section *sec,symbol *sym)
   /* count symbols */
   for (; sym; sym=sym->next) {
     /* ignore symbols preceded by a '.' and internal symbols */
-    if (*sym->name!='.' && *sym->name!=' ' && !(sym->flags&VASMINTERN)) {
-      nsyms++;
-      if (strlen(sym->name) > DRI_NAMELEN)
-        nsyms++;  /* extra symbol for long name */
+    if (*sym->name!='.' && *sym->name!=' ') {
+      if (!(sym->flags & (VASMINTERN|WEAK|COMMON)) && sym->type == LABSYM) {
+        nsyms++;
+        if ((strlen(sym->name) > DRI_NAMELEN) && tos_hisoft_dri)
+          nsyms++;  /* extra symbol for long name */
+      }
     }
     else {
       if (!strcmp(sym->name," TOSFLAGS")) {
@@ -196,15 +199,11 @@ static void tos_writesection(FILE *f,section *sec,taddr sec_align)
 {
   if (sec) {
     utaddr pc = secoffs[sec->idx];
-    utaddr npc,i;
-    taddr align;
+    utaddr npc;
     atom *a;
 
     for (a=sec->first; a; a=a->next) {
-      align = a->align;
-      npc = ((pc + align-1) / align) * align;
-      for (i=pc; i<npc; i++)
-        fw8(f,0);
+      npc = fwpcalign(f,a,sec,pc);
       do_relocs(npc,a);
       if (a->type == DATA)
         fwdata(f,a->content.db->data,a->content.db->size);
@@ -220,7 +219,7 @@ static void tos_writesection(FILE *f,section *sec,taddr sec_align)
 static void write_dri_sym(FILE *f,char *name,int type,taddr value)
 {
   struct DRIsym stab;
-  int longname = strlen(name) > DRI_NAMELEN;
+  int longname = (strlen(name) > DRI_NAMELEN) && tos_hisoft_dri;
 
   strncpy(stab.name,name,DRI_NAMELEN);
   setval(1,stab.type,sizeof(stab.type),longname?(type|STYP_LONGNAME):type);
@@ -243,17 +242,10 @@ static void tos_symboltable(FILE *f,symbol *sym)
   int t;
 
   for (; sym; sym=sym->next) {
-    if (!(sym->flags & VASMINTERN)) {
-      if (sym->type == EXPRESSION)
-        t = STYP_EQUATED | STYP_DEFINED;
-      else if (sym->type == LABSYM)
-        t = labtype[sym->sec->idx] | STYP_DEFINED;
-      else if (sym->type != IMPORT)
-        ierror(0);
-
-      if (sym->flags & EXPORT)
-        t |= STYP_GLOBAL;
-
+    /* The Devpac DRI symbol table in executables contains all labels,
+       no matter if global or local. But no equates or other types. */
+    if (!(sym->flags & (VASMINTERN|WEAK|COMMON)) && sym->type == LABSYM) {
+      t = labtype[sym->sec->idx] | STYP_DEFINED | STYP_GLOBAL;
       write_dri_sym(f,sym->name,t,tos_sym_value(sym,textbasedsyms));
     }
   }
@@ -274,15 +266,13 @@ static int tos_writerelocs(FILE *f,section *sec)
   if (sec) {
     utaddr pc = secoffs[sec->idx];
     utaddr npc;
-    taddr align;
     atom *a;
     rlist *rl;
 
     for (a=sec->first; a; a=a->next) {
       int nrel=0;
 
-      align = a->align;
-      npc = ((pc + align-1) / align) * align;
+      npc = pcalign(a,pc);
 
       if (a->type == DATA)
         rl = a->content.db->relocs;
@@ -357,7 +347,7 @@ static void write_output(FILE *f,section *sec,symbol *sym)
 
 static int output_args(char *p)
 {
-  if (!strncmp(p,"-tos-flags=",5)) {
+  if (!strncmp(p,"-tos-flags=",11)) {
     tosflags = atoi(p+11);
     return 1;
   }

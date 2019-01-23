@@ -55,10 +55,7 @@ static void write_output(FILE *f,section *sec,symbol *sym)
       pc = ULLTADDR(s->org);
 
     for (p=s->first; p; p=p->next) {
-      npc = (pc + p->align - 1) / p->align * p->align;
-      for (i=0; i<npc-pc; i++)
-        fw8(f,0);
-
+      npc = fwpcalign(f,p,s,pc);
       if (p->type == DATA) {
         for (i=0; i<p->content.db->size; i++)
           fw8(f,(unsigned char)p->content.db->data[i]);

@@ -381,6 +381,17 @@ void fwdata(FILE *f,void *d,size_t n)
 }
 
 
+void fwsblock(FILE *f,sblock *sb)
+{
+  size_t i;
+
+  for (i=0; i<sb->space; i++) {
+    if (!fwrite(sb->fill,sb->size,1,f))
+      output_error(2);  /* write error */
+  }
+}
+
+
 void fwalign(FILE *f,taddr n,taddr align)
 {
   taddr i;
@@ -390,15 +401,54 @@ void fwalign(FILE *f,taddr n,taddr align)
 }
 
 
-int fwsblock(FILE *f,sblock *sb)
+taddr fwpcalign(FILE *f,atom *a,section *sec,taddr pc)
 {
-  size_t i;
+  int align_warning = 0;
+  taddr n = balign(pc,a->align);
+  taddr patlen;
+  uint8_t *pat;
 
-  for(i=0;i<sb->space;i++){
-    if(!fwrite(sb->fill,sb->size,1,f))
-      return 0;
+  if (n == 0)
+    return pc;
+
+  if (a->type==SPACE && a->content.sb->space==0) {  /* space align atom */
+    if (a->content.sb->maxalignbytes!=0 &&  n>a->content.sb->maxalignbytes)
+      return pc;
+    pat = a->content.sb->fill;
+    patlen = a->content.sb->size;
   }
-  return 1;
+  else {
+    pat = sec->pad;
+    patlen = sec->padbytes;
+  }
+
+  pc += n;
+
+  while (n % patlen) {
+    if (!align_warning) {
+      align_warning = 1;
+      general_error(62,(unsigned long)n,(unsigned long)patlen);
+    }
+    fw8(f,0);
+    n--;
+  }
+
+  /* write alignment pattern */
+  while (n >= patlen) {
+    if (!fwrite(pat,patlen,1,f))
+      output_error(2);  /* write error */
+    n -= patlen;
+  }
+
+  while (n--) {
+    if (!align_warning) {
+      align_warning = 1;
+      general_error(62,(unsigned long)n,(unsigned long)patlen);
+    }
+    fw8(f,0);
+  }
+
+  return pc;
 }
 
 
@@ -530,6 +580,17 @@ taddr palign(taddr addr,taddr a)
 /* return number of bytes required to achieve alignment */
 {
   return balign(addr,1<<a);
+}
+
+
+taddr pcalign(atom *a,taddr pc)
+{
+  taddr n = balign(pc,a->align);
+
+  if (a->type==SPACE && a->content.sb->maxalignbytes!=0)
+    if (n > a->content.sb->maxalignbytes)
+      n = 0;
+  return pc + n;
 }
 
 

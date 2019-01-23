@@ -1994,7 +1994,7 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
                 error = 1;
                 break;
             }
-            if ( !( base->sec->flags & ABSOLUTE ) || base->type == IMPORT ) {
+            if ( !( base->sec->flags & ABSOLUTE ) || EXTREF(base) ) {
                 cpu_error(19, opcode->name);
                 error = 1;
                 break;

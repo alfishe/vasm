@@ -21,15 +21,16 @@ This syntax module provides the following additional options:
 @table @option
  
 @item -align
- Enables natural alignment for constant declaration (@code{dc.?}) directives.
+ Enables natural alignment for data (e.g. @code{dc.?}, @code{ds.?}) and
+ offset directives (@code{rs.?}, @code{so.?}, @code{fo.?}).
 
 @item -devpac
- Devpac-compatibility mode.
+ Devpac-compatibility mode. Only directives known to Devpac are recognized.
 @itemize @minus
-  @item Enables natural alignment for constant declaration (@code{dc.?})
-        directives.
+  @item Enables natural alignment for data and structure offsets
+        (see option @option{-align}).
   @item Predefines offset symbols @code{__RS}, @code{__SO} and @code{__FO} as
-        @code{0}, which in vasm are undefined until first referenced.
+        @code{0}, which otherwise are undefined until first referenced.
   @item Disable escape codes handling in strings (see @option{-noesc}).
   @item Enable dots within identifiers (see @option{-ldots}).
   @item Up to 35 macro arguments.
@@ -43,7 +44,8 @@ This syntax module provides the following additional options:
  Devpac compatbility, which offers a similar option.
 
 @item -phxass
- PhxAss-compatibilty mode. Enables the following features:
+ PhxAss-compatibilty mode. Only directives known to PhxAss are recognized.
+ Enables the following features:
 @itemize @minus
   @item @code{section <name>} starts a code section named @code{<name>}
         instead of a section which also has the type @code{<name>}.

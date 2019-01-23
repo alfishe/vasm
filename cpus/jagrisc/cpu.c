@@ -307,7 +307,7 @@ static int32_t eval_oper(instruction *ip,operand *op,section *sec,
             /* external label or from a different section */
             add_nreloc(&db->relocs,base,val,REL_PC,5,11);
           }
-          else if (base->type == LABSYM) {
+          else if (LOCREF(base)) {
             /* known label from the same section doesn't need a reloc */
             val = (val - (pc + 2)) / 2;
           }

@@ -4,11 +4,13 @@
 #include "vasm.h"
 #include "output_hunk.h"
 #if defined(VASM_CPU_M68K) || defined(VASM_CPU_PPC)
-static char *copyright="vasm hunk format output module 2.4 (c) 2002-2014 Frank Wille";
+static char *copyright="vasm hunk format output module 2.5 (c) 2002-2014 Frank Wille";
+int hunk_onlyglobal;
 
-static int databss = 0;
-static int kick1 = 0;
+static int databss;
+static int kick1;
 static int exthunk;
+static int genlinedebug;
 
 
 static uint32_t strlen32(char *s)
@@ -158,11 +160,10 @@ static utaddr file_size(section *sec)
   atom *a;
 
   for (a=sec->first; a; a=a->next) {
-    taddr align = a->align;
     int zerodata = 1;
     char *d;
 
-    npc = ((pc + align-1) / align) * align;
+    npc = pcalign(a,pc);
     if (a->type == DATA) {
       /* do we have relocations or non-zero data in this atom? */
       if (a->content.db->relocs) {
@@ -210,7 +211,7 @@ static struct hunkreloc *convert_reloc(rlist *rl,utaddr pc)
       || rl->type==REL_PPCEABI_SDA2
 #endif
      ) {
-    if (r->sym->type == LABSYM) {
+    if (LOCREF(r->sym)) {
       struct hunkreloc *hr;
       uint32_t type;
       uint32_t offs = pc + (r->offset >> 3);
@@ -288,7 +289,7 @@ static struct hunkxref *convert_xref(rlist *rl,utaddr pc)
       || rl->type==REL_PPCEABI_SDA2
 #endif
      ) {
-    if (r->sym->type == IMPORT) {
+    if (EXTREF(r->sym)) {
       struct hunkxref *xref;
       uint32_t type,size=0;
       uint32_t offs = pc + (r->offset >> 3);
@@ -453,6 +454,16 @@ static void reloc_hunk(FILE *f,uint32_t type,struct list *reloclist)
 }
 
 
+static void add_linedebug(struct list *ldblist,uint32_t line,uint32_t off)
+{
+  struct hunkline *ldebug = mymalloc(sizeof(struct hunkline));
+
+  ldebug->line = line;
+  ldebug->offset = off;
+  addtail(ldblist,&ldebug->n);
+}
+
+
 static void linedebug_hunk(FILE *f,struct list *ldblist,int num)
 {
   if (num > 0) {
@@ -601,13 +612,14 @@ static void write_object(FILE *f,section *sec,symbol *sym)
           utaddr pc=0,npc,i;
 
           for (a=sec->first; a; a=a->next) {
-            taddr align = a->align;
             rlist *rl;
 
-            npc = ((pc + align-1) / align) * align;
-            for (i=pc; i<npc; i++)
-              fw8(f,0);
+            npc = fwpcalign(f,a,sec,pc);
 
+            if (genlinedebug && (a->type==DATA || a->type==SPACE)) {
+              add_linedebug(&linedblist,(uint32_t)a->line,npc);
+              ++num_linedb;
+            }
             if (a->type == DATA) {
               fwdata(f,a->content.db->data,a->content.db->size);
               process_relocs(a->content.db->relocs,
@@ -618,12 +630,8 @@ static void write_object(FILE *f,section *sec,symbol *sym)
               process_relocs(a->content.sb->relocs,
                              &reloclist,&xreflist,sec,npc);
             }
-            else if (a->type == LINE) {
-              struct hunkline *ldebug = mymalloc(sizeof(struct hunkline));
-
-              ldebug->line = (uint32_t)a->content.srcline;
-              ldebug->offset = npc;
-              addtail(&linedblist,&ldebug->n);
+            else if (a->type == LINE && !genlinedebug) {
+              add_linedebug(&linedblist,(uint32_t)a->content.srcline,npc);
               ++num_linedb;
             }
 
@@ -650,7 +658,8 @@ static void write_object(FILE *f,section *sec,symbol *sym)
 
         if (!no_symbols) {
           /* symbol table */
-          ext_defs(f,sym,LABSYM,0,sec->idx,EXT_SYMB);
+          if (!hunk_onlyglobal)
+            ext_defs(f,sym,LABSYM,0,sec->idx,EXT_SYMB);
           /* line-debug */
           linedebug_hunk(f,&linedblist,num_linedb);
         }
@@ -719,13 +728,14 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
           size = databss ? file_size(sec) : get_sec_size(sec);
           fw32(f,(size+3)>>2,1);
           for (a=sec->first,pc=0; a!=NULL&&pc<size; a=a->next) {
-            taddr align = a->align;
             rlist *rl;
 
-            npc = ((pc + align-1) / align) * align;
-            for (i=pc; i<npc; i++)
-              fw8(f,0);
+            npc = fwpcalign(f,a,sec,pc);
 
+            if (genlinedebug && (a->type==DATA || a->type==SPACE)) {
+              add_linedebug(&linedblist,(uint32_t)a->line,npc);
+              ++num_linedb;
+            }
             if (a->type == DATA) {
               fwdata(f,a->content.db->data,a->content.db->size);
               process_relocs(a->content.db->relocs,&reloclist,NULL,sec,npc);
@@ -734,12 +744,8 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
               fwsblock(f,a->content.sb);
               process_relocs(a->content.sb->relocs,&reloclist,NULL,sec,npc);
             }
-            else if (a->type == LINE) {
-              struct hunkline *ldebug = mymalloc(sizeof(struct hunkline));
-
-              ldebug->line = (uint32_t)a->content.srcline;
-              ldebug->offset = npc;
-              addtail(&linedblist,&ldebug->n);
+            else if (a->type == LINE && !genlinedebug) {
+              add_linedebug(&linedblist,(uint32_t)a->content.srcline,npc);
               ++num_linedb;
             }
 
@@ -765,9 +771,9 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
   else {
     /* no sections: create single code hunk with size 0 */
     fw32(f,1,1);
-    fw32(f,1,0);
-    fw32(f,1,0);
-    fw32(f,1,0);
+    fw32(f,0,1);
+    fw32(f,0,1);
+    fw32(f,0,1);
     fw32(f,HUNK_CODE,1);
     fw32(f,0,1);
     fw32(f,HUNK_END,1);
@@ -783,6 +789,10 @@ static int common_args(char *p)
     return 1;
   }
 #endif
+  if (!strcmp(p,"-linedebug")) {
+    genlinedebug = 1;
+    return 1;
+  }
   return 0;
 }
 

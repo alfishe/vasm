@@ -12,7 +12,7 @@
    be provided by the main module.
 */
 
-char *syntax_copyright="vasm motorola syntax module 3.6a (c) 2002-2014 Frank Wille";
+char *syntax_copyright="vasm motorola syntax module 3.6c (c) 2002-2014 Frank Wille";
 hashtable *dirhash;
 char commentchar = ';';
 
@@ -41,10 +41,11 @@ static struct namelen erem_dirlist[] = {
   { 4,"erem" }, { 0,0 }
 };
 
-static int align_data = 0;
-static int phxass_compat = 0;
-static int allow_spaces = 0;
-static int dot_idchar = 0;
+static int align_data;
+static int phxass_compat;
+static int devpac_compat;
+static int allow_spaces;
+static int dot_idchar;
 static char local_char = '.';
 
 static int parse_end = 0;
@@ -196,7 +197,7 @@ static symbol *new_setoffset_size(char *equname,char *symname,
                                   char **s,int dir,taddr size)
 {
   symbol *sym,*equsym;
-  expr *new;
+  expr *new,*old;
 
   if (equname) {
     if (check_sym_defined(equname))
@@ -205,19 +206,34 @@ static symbol *new_setoffset_size(char *equname,char *symname,
 
   /* get current offset symbol expression, then increment or decrement it */
   sym = internal_abs(symname);
+
   if (**s!='\0' && !iscomment(*s)) {
-    /* make a new expression out of the parsed expression multiplied by size
-       and add to or subtract it from the current symbol's expression */
+    /* Make a new expression out of the parsed expression multiplied by size
+       and add to or subtract it from the current symbol's expression.
+       Perform even alignment when requested. */
     new = make_expr(MUL,parse_expr_tmplab(s),number_expr(size));
     simplify_expr(new);
-    new = make_expr(dir>0 ? ADD : SUB,sym->expr,new);
+
+    if (align_data && size>1) {
+      /* align the current offset symbol first */
+      utaddr dalign = DATA_ALIGN((int)size*8) - 1;
+
+      old = make_expr(BAND,make_expr(dir>0 ? ADD : SUB,sym->expr,
+                                     number_expr(dalign)),
+                      number_expr(~dalign));
+      simplify_expr(old);
+    }
+    else
+      old = sym->expr;
+
+    new = make_expr(dir>0 ? ADD : SUB,old,new);
   }
   else
-    new = sym->expr;
+    new = old = sym->expr;
 
   /* assign expression to equ-symbol and change exp. of the offset-symbol */
   if (equname)
-    equsym = new_abs(equname,dir>0 ? copy_tree(sym->expr) : copy_tree(new));
+    equsym = new_abs(equname,dir>0 ? copy_tree(old) : copy_tree(new));
   else
     equsym = NULL;
 
@@ -372,6 +388,8 @@ static void handle_section(char *s)
       strcpy(attr,bss_type);
     else
       strcpy(attr,code_type);
+    if (devpac_compat && !stricmp(name,"text"))
+      name = code_name;
   }
 
   if (s) {
@@ -1248,163 +1266,168 @@ static void handle_comment(char *s)
   /* otherwise it's just a comment to be ignored */
 }
 
-
+#define D 1 /* available for DevPac */
+#define P 2 /* available for PhxAss */
 struct {
   char *name;
+  int avail;
   void (*func)(char *);
 } directives[] = {
-  "org",handle_org,
-  "rorg",handle_rorg,
-  "section",handle_section,
-  "offset",handle_offset,
-  "code",handle_csec,
-  "cseg",handle_csec,
-  "text",handle_csec,
-  "data",handle_dsec,
-  "dseg",handle_dsec,
-  "bss",handle_bss,
-  "code_c",handle_codec,
-  "code_f",handle_codef,
-  "data_c",handle_datac,
-  "data_f",handle_dataf,
-  "bss_c",handle_bssc,
-  "bss_f",handle_bssf,
-  "public",handle_global,
-  "xdef",handle_global,
-  "xref",handle_global,
-  "xref.l",handle_global,
-  "nref",handle_global,
-  "entry",handle_global,
-  "extrn",handle_global,
-  "global",handle_global,
-  "import",handle_global, /* modifictation: pink-rg: handle purec syntax */
-  "export",handle_global, /* modifictation: pink-rg: handle purec syntax */
-  "load",handle_dummy_expr,
-  "jumperr",handle_dummy_expr,
-  "jumpptr",handle_dummy_expr,
-  "mask2",eol,
-  "cnop",handle_cnop,
-  "align",handle_align,
-  "even",handle_even,
-  "odd",handle_odd,
-  "dc",handle_d16,
-  "dc.b",handle_d8,
-  "dc.w",handle_d16,
-  "dc.l",handle_d32,
-  "dc.q",handle_d64,
-  "dc.s",handle_f32,
-  "dc.d",handle_f64,
-  "dc.x",handle_f96,
-  "ds",handle_spc16,
-  "ds.b",handle_spc8,
-  "ds.w",handle_spc16,
-  "ds.l",handle_spc32,
-  "ds.q",handle_spc64,
-  "ds.s",handle_spc32,
-  "ds.d",handle_spc64,
-  "ds.x",handle_spc96,
-  "dcb",handle_blk16,
-  "dcb.b",handle_blk8,
-  "dcb.w",handle_blk16,
-  "dcb.l",handle_blk32,
-  "dcb.q",handle_blk64,
-  "dcb.s",handle_blk32,
-  "dcb.d",handle_blk64,
-  "dcb.x",handle_blk96,
-  "blk",handle_blk16,
-  "blk.b",handle_blk8,
-  "blk.w",handle_blk16,
-  "blk.l",handle_blk32,
-  "blk.q",handle_blk64,
-  "blk.s",handle_blk32,
-  "blk.d",handle_blk64,
-  "blk.x",handle_blk96,
+  "org",P|D,handle_org,
+  "rorg",P|D,handle_rorg,
+  "section",P|D,handle_section,
+  "offset",P|D,handle_offset,
+  "code",P|D,handle_csec,
+  "cseg",P,handle_csec,
+  "text",P|D,handle_csec,
+  "data",P|D,handle_dsec,
+  "dseg",P,handle_dsec,
+  "bss",P|D,handle_bss,
+  "code_c",P|D,handle_codec,
+  "code_f",P|D,handle_codef,
+  "data_c",P|D,handle_datac,
+  "data_f",P|D,handle_dataf,
+  "bss_c",P|D,handle_bssc,
+  "bss_f",P|D,handle_bssf,
+  "public",P,handle_global,
+  "xdef",P|D,handle_global,
+  "xref",P|D,handle_global,
+  "xref.l",P|D,handle_global,
+  "nref",P,handle_global,
+  "entry",P,handle_global,
+  "extrn",P,handle_global,
+  "global",P,handle_global,
+  "import",P,handle_global, /* modifictation: pink-rg: handle purec syntax */
+  "export",P,handle_global, /* modifictation: pink-rg: handle purec syntax */
+  "load",P,handle_dummy_expr,
+  "jumperr",0,handle_dummy_expr,
+  "jumpptr",0,handle_dummy_expr,
+  "mask2",0,eol,
+  "cnop",P|D,handle_cnop,
+  "align",0,handle_align,
+  "even",P|D,handle_even,
+  "odd",0,handle_odd,
+  "dc",P|D,handle_d16,
+  "dc.b",P|D,handle_d8,
+  "dc.w",P|D,handle_d16,
+  "dc.l",P|D,handle_d32,
+  "dc.q",P,handle_d64,
+  "dc.s",P|D,handle_f32,
+  "dc.d",P|D,handle_f64,
+  "dc.x",P|D,handle_f96,
+  "ds",P|D,handle_spc16,
+  "ds.b",P|D,handle_spc8,
+  "ds.w",P|D,handle_spc16,
+  "ds.l",P|D,handle_spc32,
+  "ds.q",P,handle_spc64,
+  "ds.s",P|D,handle_spc32,
+  "ds.d",P|D,handle_spc64,
+  "ds.x",P|D,handle_spc96,
+  "dcb",P|D,handle_blk16,
+  "dcb.b",P|D,handle_blk8,
+  "dcb.w",P|D,handle_blk16,
+  "dcb.l",P|D,handle_blk32,
+  "dcb.q",P,handle_blk64,
+  "dcb.s",P|D,handle_blk32,
+  "dcb.d",P|D,handle_blk64,
+  "dcb.x",P|D,handle_blk96,
+  "blk",P,handle_blk16,
+  "blk.b",P,handle_blk8,
+  "blk.w",P,handle_blk16,
+  "blk.l",P,handle_blk32,
+  "blk.q",P,handle_blk64,
+  "blk.s",P,handle_blk32,
+  "blk.d",P,handle_blk64,
+  "blk.x",P,handle_blk96,
 #ifdef VASM_CPU_M68K
-  "dr",handle_reldata16,
-  "dr.b",handle_reldata8,
-  "dr.w",handle_reldata16,
-  "dr.l",handle_reldata32,
+  "dr",0,handle_reldata16,
+  "dr.b",0,handle_reldata8,
+  "dr.w",0,handle_reldata16,
+  "dr.l",0,handle_reldata32,
 #endif
-  "end",handle_end,
-  "fail",handle_fail,
-  "idnt",handle_idnt,
-  "ttl",handle_idnt,
-  "list",handle_list,
-  "nolist",handle_nolist,
-  "plen",handle_plen,
-  "llen",handle_dummy_cexpr,
-  "page",handle_page,
-  "nopage",handle_nopage,
-  "spc",handle_dummy_cexpr,
-  "output",handle_output,
-  "symdebug",eol,
-  "dsource",handle_dsource,
-  "debug",handle_debug,
-  "comment",handle_comment,
-  "incdir",handle_incdir,
-  "include",handle_include,
-  "incbin",handle_incbin,
-  "image",handle_incbin,
-  "rept",handle_rept,
-  "endr",handle_endr,
-  "macro",handle_macro,
-  "endm",handle_endm,
-  "mexit",handle_mexit,
-  "rem",handle_rem,
-  "erem",handle_erem,
-  "ifb",handle_ifb,
-  "ifnb",handle_ifnb,
-  "ifc",handle_ifc,
-  "ifnc",handle_ifnc,
-  "ifd",handle_ifd,
-  "ifnd",handle_ifnd,
-  "ifeq",handle_ifeq,
-  "ifne",handle_ifne,
-  "ifgt",handle_ifgt,
-  "ifge",handle_ifge,
-  "iflt",handle_iflt,
-  "ifle",handle_ifle,
-  "if",handle_ifne,
-  "else",handle_else,
-  "elseif",handle_else,
-  "endif",handle_endif,
-  "endc",handle_endif,
-  "rsreset",handle_rsreset,
-  "rsset",handle_rsset,
-  "clrso",handle_rsreset,
-  "setso",handle_rsset,
-  "clrfo",handle_clrfo,
-  "setfo",handle_setfo,
-  "rs",handle_rs16,
-  "rs.b",handle_rs8,
-  "rs.w",handle_rs16,
-  "rs.l",handle_rs32,
-  "rs.q",handle_rs64,
-  "rs.s",handle_rs32,
-  "rs.d",handle_rs64,
-  "rs.x",handle_rs96,
-  "so",handle_rs16,
-  "so.b",handle_rs8,
-  "so.w",handle_rs16,
-  "so.l",handle_rs32,
-  "so.q",handle_rs64,
-  "so.s",handle_rs32,
-  "so.d",handle_rs64,
-  "so.x",handle_rs96,
-  "fo",handle_fo16,
-  "fo.b",handle_fo8,
-  "fo.w",handle_fo16,
-  "fo.l",handle_fo32,
-  "fo.q",handle_fo64,
-  "fo.s",handle_fo32,
-  "fo.d",handle_fo64,
-  "fo.x",handle_fo96,
-  "cargs",handle_cargs,
-  "echo",handle_printt,
-  "printt",handle_printt,
-  "printv",handle_printv,
-  "auto",handle_noop,
+  "end",P|D,handle_end,
+  "fail",P|D,handle_fail,
+  "idnt",P|D,handle_idnt,
+  "ttl",P|D,handle_idnt,
+  "list",P|D,handle_list,
+  "module",P|D,handle_idnt,
+  "nolist",P|D,handle_nolist,
+  "plen",P|D,handle_plen,
+  "llen",P|D,handle_dummy_cexpr,
+  "page",P|D,handle_page,
+  "nopage",P|D,handle_nopage,
+  "spc",P|D,handle_dummy_cexpr,
+  "output",P|D,handle_output,
+  "symdebug",P,eol,
+  "dsource",P,handle_dsource,
+  "debug",P,handle_debug,
+  "comment",P|D,handle_comment,
+  "incdir",P|D,handle_incdir,
+  "include",P|D,handle_include,
+  "incbin",P|D,handle_incbin,
+  "image",0,handle_incbin,
+  "rept",P|D,handle_rept,
+  "endr",P|D,handle_endr,
+  "macro",P|D,handle_macro,
+  "endm",P|D,handle_endm,
+  "mexit",P|D,handle_mexit,
+  "rem",P,handle_rem,
+  "erem",P,handle_erem,
+  "ifb",0,handle_ifb,
+  "ifnb",0,handle_ifnb,
+  "ifc",P|D,handle_ifc,
+  "ifnc",P|D,handle_ifnc,
+  "ifd",P|D,handle_ifd,
+  "ifnd",P|D,handle_ifnd,
+  "ifeq",P|D,handle_ifeq,
+  "ifne",P|D,handle_ifne,
+  "ifgt",P|D,handle_ifgt,
+  "ifge",P|D,handle_ifge,
+  "iflt",P|D,handle_iflt,
+  "ifle",P|D,handle_ifle,
+  "if",P,handle_ifne,
+  "else",P|D,handle_else,
+  "elseif",P|D,handle_else,
+  "endif",P|D,handle_endif,
+  "endc",P|D,handle_endif,
+  "rsreset",P|D,handle_rsreset,
+  "rsset",P|D,handle_rsset,
+  "clrso",P,handle_rsreset,
+  "setso",P,handle_rsset,
+  "clrfo",P,handle_clrfo,
+  "setfo",P,handle_setfo,
+  "rs",P|D,handle_rs16,
+  "rs.b",P|D,handle_rs8,
+  "rs.w",P|D,handle_rs16,
+  "rs.l",P|D,handle_rs32,
+  "rs.q",P,handle_rs64,
+  "rs.s",P|D,handle_rs32,
+  "rs.d",P|D,handle_rs64,
+  "rs.x",P|D,handle_rs96,
+  "so",P,handle_rs16,
+  "so.b",P,handle_rs8,
+  "so.w",P,handle_rs16,
+  "so.l",P,handle_rs32,
+  "so.q",P,handle_rs64,
+  "so.s",P,handle_rs32,
+  "so.d",P,handle_rs64,
+  "so.x",P,handle_rs96,
+  "fo",P,handle_fo16,
+  "fo.b",P,handle_fo8,
+  "fo.w",P,handle_fo16,
+  "fo.l",P,handle_fo32,
+  "fo.q",P,handle_fo64,
+  "fo.s",P,handle_fo32,
+  "fo.d",P,handle_fo64,
+  "fo.x",P,handle_fo96,
+  "cargs",P|D,handle_cargs,
+  "echo",P,handle_printt,
+  "printt",0,handle_printt,
+  "printv",0,handle_printv,
+  "auto",0,handle_noop,
 };
+#undef P
+#undef D
 
 int dir_cnt = sizeof(directives) / sizeof(directives[0]);
 
@@ -1811,11 +1834,18 @@ int init_syntax()
   size_t i;
   symbol *sym;
   hashdata data;
+  int avail;
+
+  if (devpac_compat) avail = 1;
+  else if (phxass_compat) avail = 2;
+  else avail = 0;
 
   dirhash = new_hashtable(0x200); /* @@@ */
   for (i=0; i<dir_cnt; i++) {
-    data.idx = i;
-    add_hashentry(dirhash,directives[i].name,data);
+    if ((directives[i].avail & avail) == avail) {
+      data.idx = i;
+      add_hashentry(dirhash,directives[i].name,data);
+    }
   }
   
   current_pc_char = '*';
@@ -1860,6 +1890,7 @@ int syntax_args(char *p)
     return 1;
   }
   else if (!strcmp(p,"-devpac")) {
+    devpac_compat = 1;
     align_data = 1;
     esc_sequences = 0;
     maxmacparams = 36;  /* allow \a..\z macro parameters */

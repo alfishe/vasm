@@ -359,7 +359,7 @@ static uint32_t aout_convert_rlist(int be,atom *a,int secid,
     int based = getrinfo(rl,-1,sections[secid]->name,be) != 0;
 #endif
 
-    if (refsym->type == LABSYM) {
+    if (LOCREF(refsym)) {
       /* this is a local relocation */
       int rsecid = refsym->sec->idx;
 
@@ -367,12 +367,12 @@ static uint32_t aout_convert_rlist(int be,atom *a,int secid,
                         getrinfo(rl,0,sections[secid]->name,be),
                         be);
 #if SDAHACK
-      if (!based)  /* @@@ 'based' does not really happen in Unix */
+      if (!based)  /* @@@ 'based' does not really happen under Unix */
 #endif
         val += secoffs[rsecid];
       rsize += sizeof(struct relocation_info);
     }
-    else if (refsym->type == IMPORT) {
+    else if (EXTREF(refsym)) {
       /* this is an external symbol reference */
       int symidx;
 
@@ -413,9 +413,7 @@ static uint32_t aout_addrelocs(int be,int secid,struct list *rlst,
     taddr pc=0,npc;
 
     for (a=sections[secid]->first; a; a=a->next) {
-      int align = a->align;
-
-      npc = ((pc + align-1) / align) * align;
+      npc = pcalign(a,pc);
       rtabsize += aout_convert_rlist(be,a,secid,rlst,npc,getrinfo);
       pc = npc + atom_size(a,sections[secid],npc);
     }
@@ -449,13 +447,9 @@ static void aout_writesection(FILE *f,section *sec,taddr sec_align)
   if (sec) {
     atom *a;
     taddr pc=0,npc;
-    int align,i;
 
     for (a=sec->first; a; a=a->next) {
-      align = a->align;
-      npc = ((pc + align-1) / align) * align;
-      for (i=pc; i<npc; i++)
-        fw8(f,0);
+      npc = fwpcalign(f,a,sec,pc);
       if (a->type == DATA)
         fwdata(f,a->content.db->data,a->content.db->size);
       else if (a->type == SPACE)

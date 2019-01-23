@@ -56,7 +56,7 @@ enum {
 enum {
   OP_D8=1,OP_D16,OP_D32,OP_D64,OP_F32,OP_F64,OP_F96,
   D_,A_,AI,R_,RM,DD,CS,PA,AP,DP,F_,FF,FR,FPIAR,IM,QI,BR,AB,VA,RL,FL,FS,
-  AY,AM,MA,FA,CF,MAQ,CFAM,CM,AL,DA,DN,CFDA,CT,AC,AD,CFAD,BD,BS,AK,MS,MR,
+  AY,AM,MA,MI,FA,CF,MAQ,CFAM,CM,AL,DA,DN,CFDA,CT,AC,AD,CFAD,BD,BS,AK,MS,MR,
   CFMM,CFMN,_CCR,_SR,_USP,_CACHES,_ACC,_MACSR,_MASK,_CTRL,_ACCX,_AEXT,
   _VAL,_FC,_RP_030,_RP_851,_TC,_AC,_M1_B,_BAC,_BAD,_PSR,_PCSR,_TT,SH
 };
@@ -160,6 +160,9 @@ struct optype optypes[] = {
 
 /* MA        memory addressing modes 2-6,7.0-4 */
   _(0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0),0,0,0,
+
+/* MI        memory addressing modes 2-6,7.0-3 without immediate */
+  _(0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0),0,0,0,
 
 /* FA        memory addressing modes 2-6,7.0-4 with float immediate */
   _(0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0),OTF_FLTIMM,0,0,

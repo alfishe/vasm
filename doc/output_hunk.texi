@@ -21,6 +21,10 @@ selected with the @option{-Fhunk} option to generate objects and with the
         been valid at the time of Kickstart 1.x for compatibility with
         old assembler sources and old linkers. For example: no longer
         differentiate between absolute and relative references.
+    @item -linedebug
+        Automatically generate an SAS/C-compatible LINE DEBUG hunk for
+        the input source. Overrides any line debugging directives from
+        the source.
 @end table
 
 These options are valid for the @code{hunkexe} module only:
@@ -86,7 +90,7 @@ The @code{hunkexe} module supports absolute 32-bit relocations only.
 
 @itemize @minus
 
-@item The @code{hunkexe} module won't process common symbols and allocates
+@item The @code{hunkexe} module won't process common symbols and allocate
 them in a @code{BSS} section. Use a real linker for that.
 
 @end itemize
@@ -102,4 +106,5 @@ This module has the following error messages:
 @item 3004: section attributes <attr> not suppported
 @item 3005: reloc type <m>, size <n>, mask <mask> (symbol <sym> + <offset>) not supported
 @item 3006: reloc type <n> not supported
+@item 3009: undefined symbol <%s> at %s+0x%lx, reloc type %d
 @end itemize

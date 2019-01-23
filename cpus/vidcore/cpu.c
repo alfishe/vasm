@@ -16,9 +16,22 @@ int bitsperbyte=8;
 int bytespertaddr=4;
 
 static char *ccs[]={"eq","ne","cs","cc","mi","pl","vs","vc",
-		    "hi","ls","ge","lt","gt","le","###","f"};
+		    "hi","ls","ge","lt","gt","le","???","f"};
 
 static char *vflags[]={"all","none","ifz","ifnz","ifn","ifnn","ifc","ifnc"};
+
+static char *accs[]={
+  "???", "sub", "wba", "???", "clra", "???", "???", "???",
+  "sign", "???", "???", "???", "???", "???", "???", "???",
+  "high", "???", "???", "???", "???", "???", "???", "???",
+  "???", "???", "???", "???", "???", "???", "???", "???",
+  "uadd", "usub", "uacc", "udec", "???", "???", "???", "???",
+  "sadd", "ssub", "sacc", "sdec", "???", "???", "???", "???",
+  "uaddh", "usubh", "uacch", "udech", "???", "???", "???", "???",
+  "saddh", "ssubh", "sacch", "sdech", "???", "???", "???", "???"};
+
+static char *sru[]={
+  "sumu", "sums", "???", "imin", "???", "imax", "???", "max"};
 
 static size_t oplen(int op)
 {
@@ -38,6 +51,7 @@ static size_t oplen(int op)
 static char *skip_reg(char *s,int *reg)
 {
   int r=-1;
+  char* orig=s;
   if(s[0]=='p'&&s[1]=='c'){
     *reg=31;
     return s+2;
@@ -59,11 +73,14 @@ static char *skip_reg(char *s,int *reg)
   }
   s++;
   if(*s<'0'||*s>'9'){
-    return s;
+    return orig;
   }
   r=*s++-'0';
   if(*s>='0'&&*s<='9')
     r=10*r+*s++-'0';
+  if(isalnum(*s)||*s=='_'){
+    return orig;
+  }
   *reg=r;
   return s;
 }
@@ -136,7 +153,7 @@ int parse_operand(char *p,int len,operand *op,int req)
       char *m;
       m=s=skip(p+1);
       s=skip_reg(s,&r);
-      if(m!=s) nodisp=1;
+      if((m!=s)||(*s=='0')) nodisp=1;
     }
     if(!nodisp){
       op->offset=parse_expr(&p);
@@ -146,15 +163,24 @@ int parse_operand(char *p,int len,operand *op,int req)
     if(*p!='(') return 0;
     p=skip(p+1);
     s=skip_reg(p,&r);
-    if(s==p) return 0;
-    if(r>7) return 0;
-    p=skip(s);
-    op->reg=r;
+    if (s==p){
+      /* Special case: Allow '0' instead of a register */
+      if (*p=='0'){
+	p=skip(p+1);
+	op->reg=15;
+      }
+      else return 0;
+    }else{
+      if(r>14) return 0;
+      p=skip(s);
+      op->reg=r;
+    }
+    op->dreg=15;
     if(*p=='+'&&p[1]=='='){
       p=skip(p+2);
       s=skip_reg(p,&r);
       if(s==p) return 0;
-      if(r>7) return 0;
+      if(r>14) return 0;
       p=skip(s);
       op->dreg=r;
     }
@@ -251,13 +277,23 @@ int parse_operand(char *p,int len,operand *op,int req)
     op->offset=parse_expr(&p);
     simplify_expr(op->offset);
     p=skip(p);
-  }else if(req==OP_VREG||req==OP_VREGM||req==OP_VREGMM){
+  }else if(req==OP_VREG||req==OP_VREGM||req==OP_VREGMM||req==OP_VREGA80){
     s=skip_reg(p,&r);
+    op->offset=0;
     if(s!=p){
+      if (*s=='+'||*s=='-'){
+        if(req==OP_VREG) return 0;
+        op->offset=parse_expr(&s);
+      }
       p=skip(s);
       op->type=OP_VREG;
-      op->reg=(0xE<<6)|r;
-      op->dreg=0x3c;
+      if(req==OP_VREG){
+	op->reg=(0xE<<6)|r;
+	op->dreg=0x3c;
+      }else{
+	op->reg=(0xE<<6);
+	op->dreg=r<<2;
+      }
     }else if(*p=='-'){
       p=skip(p+1);
       op->type=OP_VREG;
@@ -268,7 +304,8 @@ int parse_operand(char *p,int len,operand *op,int req)
       expr *e;
       if(*p=='H'||*p=='h')
 	vert=0;
-      else if(*p=='V'||*p=='v')
+      // Disable vertical registers in 48-bit instructions for now
+      else if((req!=OP_VREG)&&(*p=='V'||*p=='v'))
 	vert=1;
       else
 	return 0;
@@ -276,8 +313,17 @@ int parse_operand(char *p,int len,operand *op,int req)
       if(*p=='X'||*p=='x'){
 	size=2;
 	p=skip(p+1);
+      }else if(*p=='1'&&p[1]=='6'){
+	size=2;
+	p=skip(p+2);
       }else if(*p=='Y'||*p=='y'){
 	size=4;
+	p=skip(p+1);
+      }else if(*p=='3'&&p[1]=='2'){
+	size=4;
+	p=skip(p+2);
+      }else if(*p=='8'){
+	size=1;
 	p=skip(p+1);
       }else{
 	size=1;
@@ -290,30 +336,50 @@ int parse_operand(char *p,int len,operand *op,int req)
       y=e->c.val;
       p=skip(p);
 #if 1
-      if((req==OP_VREGM||req==OP_VREGMM)&&*p=='+'){
+      if(req!=OP_VREG&&*p=='+'){
 	p++;
 	if(*p!='+') return 0;
+	if(vert) {
+	  cpu_error(4);
+	  return 0;
+	}
 	p=skip(p+1);
 	inc|=2;
       }
 #endif
       if(*p!=',') return 0;
       p=skip(p+1);
+      if((*p=='c')||(*p=='C'))
+      {
+	p++;
+	if (*p!='b'&&*p!='B') return 0;
+	p++;
+	if (*p!='+') return 0;
+	inc|=1;
+      }
       e=parse_expr(&p);
       if(e->type!=NUM) return 0;
       x=e->c.val;
       p=skip(p);
 #if 1
-      if((req==OP_VREGM||req==OP_VREGMM)&&*p=='+'){
+      if(req!=OP_VREG&&*p=='+'){
 	p++;
 	if(*p!='+') return 0;
+	if(!vert) {
+	  cpu_error(4);
+	  return 0;
+	}
 	p=skip(p+1);
 	inc|=2;
       }
 #endif
       if(*p!=')') return 0;
       p=skip(p+1);
-      if((req==OP_VREGM||req==OP_VREGMM)&&*p=='+'){
+      if(req!=OP_VREG&&*p=='*'){
+	p=skip(p+1);
+	inc|=1;
+      }
+      if(req!=OP_VREG&&*p=='+'){
 	p=skip(p+1);
 	s=skip_reg(p,&r);
 	if(s==p) return 0;
@@ -321,33 +387,48 @@ int parse_operand(char *p,int len,operand *op,int req)
 	inc&=~0x3c;
 	inc|=(r<<2);
       }
-      if(size==1){
-	if(x==0)
-	  op->reg=0;
-	else if(x==16)
-	  op->reg=2<<6;
-	else if(x==32)
-	  op->reg=4<<6;
-	else if(x==48)
-	  op->reg=6<<6;
-	else
-	  cpu_error(0);
-      }else if(size==2){
-	if(x==0)
-	  op->reg=8<<6;
-	else if(x==32)
-	  op->reg=10<<6;
-	else
-	  cpu_error(0);
+      if(req==OP_VREGA80){
+	if(size==1){
+	  op->reg=(vert<<6)|((x&48)<<3);
+	}else if(size==2){
+	  if(x&16) return 0;
+	  op->reg=(vert<<6)|(8<<6)|((x&32)<<2);
+	}else{
+	  if(x&48) return 0;
+	  op->reg=(vert<<6)|(12<<6);
+	}
+	if(y<0||y>63) return 0;
+	op->reg|=y&63;
+	inc|=(x&15)<<6;
       }else{
-	if(x==0)
-	  op->reg=12<<6;
-	else
-	  cpu_error(0);
+	if(vert){
+	  if(size==1){
+	    op->reg=(1<<6)|((x&48)<<3);
+	  }else if(size==2){
+	    if(x&16) return 0;
+	    op->reg=(9<<6)|((x&32)<<2);
+	  }else{
+	    if(x&48) return 0;
+	    op->reg=13<<6;
+	  }
+	  if(y<0||y>63||(y&15)) return 0;
+	  op->reg|=(y&48)|(x&15);
+	}
+	else{
+	  if(size==1){
+	    if(x&15) return 0;
+	    op->reg=(x&48)<<3;
+	  }else if(size==2){
+	    if(x&31) return 0;
+	    op->reg=(8<<6)|((x&32)<<2);
+	  }else{
+	    if(x) return 0;
+	    op->reg=12<<6;
+	  }
+	if(y<0||y>63) return 0;
+	op->reg|=y&63;
+	}
       }
-      if(y<0||y>63) cpu_error(0);
-      if(vert) op->reg|=1<<6;
-      op->reg|=y&63;
       op->dreg=inc;
       op->type=OP_VREG;
     }
@@ -357,17 +438,23 @@ int parse_operand(char *p,int len,operand *op,int req)
   if(req==OP_VREGMM||req==OP_IMM32M||req==OP_VIND){
     int vecmod=0,i;
     while(1){
-      if(!strncmp(p,"rep",3)&&isspace((unsigned char)p[3])){
+      if(!strncasecmp(p,"rep",3)&&isspace((unsigned char)p[3])){
 	expr *e;
 	taddr x;
 	p=skip(p+3);
-	e=parse_expr(&p);
-	if(e->type!=NUM) return 0;
-	x=e->c.val;
-	for(i=0;i<8;i++){
-	  if((1<<i)==x){
-	    vecmod|=i<<16;
-	    break;
+	if((*p=='r')&&(p[1]=='0')&&!isdigit(p[2])){
+	  p=skip(p+2);
+	  vecmod|=7<<16;
+	  i=0;
+	}else{
+	  e=parse_expr(&p);
+	  if(e->type!=NUM) return 0;
+	  x=e->c.val;
+	  for(i=0;i<8;i++){
+	    if((1<<i)==x){
+	      vecmod|=i<<16;
+	      break;
+	    }
 	  }
 	}
 	if(i>=8) return 0;
@@ -375,29 +462,38 @@ int parse_operand(char *p,int len,operand *op,int req)
 	continue;
       }
       for(i=0;i<sizeof(vflags)/sizeof(vflags[0]);i++){
-	if(!strncmp(p,vflags[i],strlen(vflags[i]))){
+	if((!strncasecmp(p,vflags[i],strlen(vflags[i])))&&
+	   (!isalpha(p[strlen(vflags[i])]))){
 	  if(vecmod&0x380) return 0;
 	  vecmod|=i<<7;
 	  p=skip(p+strlen(vflags[i]));
 	  continue;
 	}
       }
-      if(!strncmp(p,"clra",4)){
-	p=skip(p+4);
-	vecmod|=4;
-	continue;
+      for (i=0;i<sizeof(sru)/sizeof(sru[0]);i++){
+	if(!strncasecmp(p,sru[i],strlen(sru[i]))){
+	  p=skip(p+strlen(sru[i]));
+	  p=skip_reg(p,&r);
+	  if((r<0)||(r>7)) return 0;
+	  vecmod|=(1<<6)|(i<<3)|r;
+	  continue;
+	}
       }
-      if(!strncmp(p,"acc",3)){
+      for (i=0;i<sizeof(accs)/sizeof(accs[0]);i++){
+	if((!strncasecmp(p,accs[i],strlen(accs[i])))&&
+	   (!isalpha(p[strlen(accs[i])]))){
+	  if(vecmod&0x40) return 0;
+	  vecmod|=i;
+	  p=skip(p+strlen(accs[i]));
+	  continue;
+	}
+      }
+      if(!strncasecmp(p,"ena",3)){
+	if(vecmod&0x40) return 0;
 	p=skip(p+3);
-	vecmod|=2;
-	continue;
+	vecmod|=32;
       }
-      if(!strncmp(p,"sba",3)){
-	p=skip(p+3);
-	vecmod|=1;
-	continue;
-      }
-      if(!strncmp(p,"setf",4)){
+      if(!strncasecmp(p,"setf",4)){
 	p=skip(p+4);
 	vecmod|=1<<20;
 	continue;
@@ -428,7 +524,7 @@ static taddr dooffset(int rel,expr *tree,section *sec,taddr pc,rlist **relocs,in
       val-=pc;
       addend+=roffset/8;
     }
-    if(rel!=REL_PC||base->type!=LABSYM||base->sec!=sec){
+    if(rel!=REL_PC||!LOCREF(base)||base->sec!=sec){
       add_nreloc_masked(relocs,base,addend,rel,size,roffset,mask);
       return 0;
     }
@@ -461,19 +557,24 @@ static taddr absval(expr *tree,section *sec,taddr pc,int bits,int sgn)
     if(val<0||val>=(1<<bits))
       cpu_error(1,bits);
   }else{
-    if(val<-(1<<(bits-1))||val>((1<<(bits-1))-1))
+    if(val<-(1<<(bits-1))||val>=(1<<(bits-1)))
       cpu_error(1,bits);
   }
   return val&((1<<bits)-1);
 }
 
-static int chkval(expr *tree,section *sec,taddr pc,int bits)
+static int chkval(expr *tree,section *sec,taddr pc,int bits,int sgn)
 {
   taddr val;
   if(!eval_expr(tree,&val,sec,pc))
     cpu_error(0);
-  if(val<0||val>=(1<<bits))
-    return 0;
+  if(!sgn){
+    if(val<0||val>=(1<<bits))
+      return 0;
+  }else{
+    if(val<-(1<<(bits-1))||val>=(1<<(bits-1)))
+      return 0;
+  }
   return 1;
 }
 
@@ -507,20 +608,20 @@ static int translate(instruction *p,section *sec,taddr pc)
   }
   if(e==EN_ARITHI32){
     if(p->op[2]){
-      if(!chkval(p->op[2]->offset,sec,pc,5)&&(!strcmp("add",mnemonics[c].name)||!strcmp("sub",mnemonics[c].name)))
+      if(!chkval(p->op[2]->offset,sec,pc,6,1)&&(!strcmp("add",mnemonics[c].name)||!strcmp("sub",mnemonics[c].name)))
 	c=replace(c,EN_ADD48);
     }else{
-      if(!chkval(p->op[1]->offset,sec,pc,5))
+      if((c<32)&&(!chkval(p->op[1]->offset,sec,pc,6,1)))
 	c=replace(c,EN_ARITHI48);
     }
   }
   if(e==EN_ARITHI16){
-    if(!chkval(p->op[1]->offset,sec,pc,5))
+    if(!chkval(p->op[1]->offset,sec,pc,5,0))
       c=replace(c,EN_ARITHI48);
   }
   if(e==EN_RBRANCH16){
     symbol *base;
-    if(find_base(p->op[0]->offset,&base,sec,pc)!=BASE_OK||base->type!=LABSYM||base->sec!=sec)
+    if(find_base(p->op[0]->offset,&base,sec,pc)!=BASE_OK||!LOCREF(base)||base->sec!=sec)
       c=replace(c,EN_RBRANCH32);
     else{
       int i;
@@ -642,14 +743,20 @@ dblock *eval_instruction(instruction *p,section *sec,taddr pc)
     code|=p->op[0]->reg<<16;
     if(p->op[2]){
       code|=p->op[1]->reg<<11;
-      code|=absval(p->op[2]->offset,sec,pc,5,0);
+      code|=absval(p->op[2]->offset,sec,pc,6,1);
     }else{
       code|=p->op[0]->reg<<11;
-      code|=absval(p->op[1]->offset,sec,pc,5,0);
+      code|=absval(p->op[1]->offset,sec,pc,6,1);
     }
     code|=cc<<7;
     break;
   case EN_ADDCMPB64:
+    // Large offset: invert CC, place a long branch after
+    // so we really generate the following:
+    //   addcmpb<~cc> d, a, b, skip
+    //   b <destination>
+    // skip:
+    //   <rest of code>
     m=1;
     if(cc&1) cc--; else cc++;
   case EN_ADDCMPB32:
@@ -787,63 +894,165 @@ dblock *eval_instruction(instruction *p,section *sec,taddr pc)
       code|=absval(p->op[1]->offset,sec,pc,16,1);
     break;
   case EN_VLOAD48:
-    code=0xF0000000;
-    code2=(p->op[0]->reg<<22)|p->op[1]->reg;
+    code=0xF0000000|(code<<19);
+    code2=(p->op[0]->reg<<22)|(7<<7)|p->op[1]->reg;
     break;
   case EN_VSTORE48:
-    code=0xF0800000;
+    code=0xF0000000|(code<<19);
+    code2=(p->op[0]->reg<<12)|(7<<7)|p->op[1]->reg;
+    break;
+  case EN_VREAD48:
+    code=0xF0000000|(code<<19);
+    code2=(p->op[0]->reg<<22)|p->op[1]->reg;
+    break;
+  case EN_VWRITE48:
+    code=0xF0000000|(code<<19);
     code2=(p->op[0]->reg<<12)|p->op[1]->reg;
+    break;
+  case EN_VREADI48:
+    code=0xF0000000|(code<<19);
+    code2=(p->op[0]->reg<<22)|absval(p->op[1]->offset,sec,pc,6,0)|(1<<10);
+    break;
+  case EN_VWRITEI48:
+    code=0xF0000000|(code<<19);
+    code2=(p->op[0]->reg<<12)|absval(p->op[1]->offset,sec,pc,6,0)|(1<<10);
     break;
   case EN_VARITHR48:
     if(code<48) code|=64;
     code=0xF4000000|(code<<19);
-    code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|p->op[2]->reg;
+    if(p->op[2]){
+      code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|p->op[2]->reg;
+    }else{
+      code2=(p->op[0]->reg<<22)|p->op[1]->reg;
+    }
     break;
   case EN_VARITHI48:
     if(code<48) code|=64;
     code=0xF4000000|(code<<19);
-    code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|absval(p->op[2]->offset,sec,pc,6,0)|(1<<10);
+    if(p->op[2]){
+      code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|absval(p->op[2]->offset,sec,pc,6,0)|(1<<10);
+    }else{
+      code2=(p->op[0]->reg<<22)|absval(p->op[1]->offset,sec,pc,6,0)|(1<<10);
+    }
     break;
+  // TODO: Check these!
   case EN_VLOAD80:
     code=0xF8000000|(code<<19)|(p->op[1]->vecmod&0x70000);
     code2=(p->op[0]->reg<<22);
     code3=(p->op[1]->reg<<2)|(p->op[0]->dreg<<26)|((p->op[1]->dreg)<<22);
     if(p->op[1]->offset){
-      code2|=(absval(p->op[1]->offset,sec,pc,9,0)&0x7f);
-      code3|=(absval(p->op[1]->offset,sec,pc,9,0)>>7)&3;
+      code2|=(absval(p->op[1]->offset,sec,pc,16,1)&0x7f);
+      code3|=(absval(p->op[1]->offset,sec,pc,16,1)>>7)&3;
+      code3|=((absval(p->op[1]->offset,sec,pc,16,1)>>9)&0x7f)<<6;
     }
     break;
   case EN_VSTORE80:
-    code=0xF8800000|(code<<19)|(p->op[1]->vecmod&0x70000);
+    code=0xF8000000|(code<<19)|(p->op[1]->vecmod&0x70000);
     code2=(p->op[0]->reg<<12);
     code3=(p->op[1]->reg<<2)|(p->op[0]->dreg<<20)|((p->op[1]->dreg)<<28);
     if(p->op[1]->offset){
-      code2|=(absval(p->op[1]->offset,sec,pc,9,0)&0x7f);
-      code3|=(absval(p->op[1]->offset,sec,pc,9,0)>>7)&3;
+      code2|=(absval(p->op[1]->offset,sec,pc,16,1)&0x7f);
+      code3|=(absval(p->op[1]->offset,sec,pc,16,1)>>7)&3;
+      code3|=((absval(p->op[1]->offset,sec,pc,16,1)>>9)&0x7f)<<6;
     }
+    break;
+  case EN_VREAD80:
+    if(p->op[1]->offset){
+      p->op[1]->reg|=(absval(p->op[1]->offset,sec,pc,9,1)&0x7f);
+      p->op[1]->dreg|=(absval(p->op[1]->offset,sec,pc,9,1)>>7)&3;
+    }
+    code=0xF8000000|(code<<19)|(p->op[1]->vecmod&0x70000);
+    code2=(p->op[0]->reg<<22)|(p->op[1]->reg);
+    if(p->op[1]->vecmod&(1<<20)) code2|=(1<<11);
+    code3=(p->op[0]->dreg<<26)|(p->op[1]->dreg);
+    code3|=(p->op[1]->vecmod&0x3fff)<<6;
+    break;
+  case EN_VWRITE80:
+    if(p->op[1]->offset){
+      p->op[1]->reg|=(absval(p->op[1]->offset,sec,pc,9,1)&0x7f);
+      p->op[1]->dreg|=(absval(p->op[1]->offset,sec,pc,9,1)>>7)&3;
+    }
+    code=0xF8000000|(code<<19)|(p->op[1]->vecmod&0x70000);
+    code2=(p->op[0]->reg<<12)|(p->op[1]->reg);
+    if(p->op[1]->vecmod&(1<<20)) code2|=(1<<11);
+    code3=((p->op[0]->dreg&0x3f)<<20)|((p->op[0]->dreg&0x3c0)<<10)|(p->op[1]->dreg);
+    code3|=(p->op[1]->vecmod&0x3fff)<<6;
+    break;
+  case EN_VREADI80:
+    if(p->op[1]->offset){
+      p->op[1]->reg|=(absval(p->op[1]->offset,sec,pc,9,1)&0x7f);
+      p->op[1]->dreg|=(absval(p->op[1]->offset,sec,pc,9,1)>>7)&3;
+    }
+    code=0xF8000000|(code<<19)|(p->op[1]->vecmod&0x70000);
+    if(p->op[1]->vecmod&(1<<20)) code2|=(1<<11);
+    code2=(p->op[0]->reg<<22)|(1<<10)|(absval(p->op[1]->offset,sec,pc,16,0)&0x3ff);
+    code3=(p->op[0]->dreg<<26)|((absval(p->op[1]->offset,sec,pc,16,0)>>10)&0x3f);
+    code3|=(p->op[1]->vecmod&0x3fff)<<6;
+    break;
+  case EN_VWRITEI80:
+    if(p->op[1]->offset){
+      p->op[1]->reg|=(absval(p->op[1]->offset,sec,pc,9,1)&0x7f);
+      p->op[1]->dreg|=(absval(p->op[1]->offset,sec,pc,9,1)>>7)&3;
+    }
+    code=0xF8000000|(code<<19)|(p->op[1]->vecmod&0x70000);
+    if(p->op[1]->vecmod&(1<<20)) code2|=(1<<11);
+    code2=(p->op[0]->reg<<12)|(1<<10)|(absval(p->op[1]->offset,sec,pc,16,0)&0x3ff);
+    code3=((p->op[0]->dreg&0x3f)<<20)|((p->op[0]->dreg&0x3c0)<<10)|((absval(p->op[1]->offset,sec,pc,16,0)>>10)&0x3f);
+    code3|=(p->op[1]->vecmod&0x3fff)<<6;
     break;
   case EN_VARITHR80:
     if(code<48) code|=64;
-    code=0xFC000000|(code<<19)|(p->op[2]->vecmod&0x70000);
-    code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|(p->op[2]->reg);
-    if(p->op[2]->vecmod&(1<<20)) code2|=(1<<11);
-    code3=(p->op[0]->dreg<<26)|(p->op[1]->dreg<<20)|(p->op[2]->dreg);
-    code3|=(p->op[2]->vecmod&0x3fff)<<6;
+    if(p->op[2]){
+      if(p->op[2]->offset){
+	p->op[2]->reg|=(absval(p->op[2]->offset,sec,pc,9,1)&0x7f);
+	p->op[2]->dreg|=(absval(p->op[2]->offset,sec,pc,9,1)>>7)&3;
+      }
+      code=0xFC000000|(code<<19)|(p->op[2]->vecmod&0x70000);
+      code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|(p->op[2]->reg);
+      if(p->op[2]->vecmod&(1<<20)) code2|=(1<<11);
+      code3=(p->op[0]->dreg<<26)|((p->op[1]->dreg&0x3f)<<20)|((p->op[1]->dreg&0x3c0)<<10)|(p->op[2]->dreg);
+      code3|=(p->op[2]->vecmod&0x3fff)<<6;
+    }else{
+      if(p->op[1]->offset){
+	p->op[1]->reg|=(absval(p->op[1]->offset,sec,pc,9,1)&0x7f);
+	p->op[1]->dreg|=(absval(p->op[1]->offset,sec,pc,9,1)>>7)&3;
+      }
+      code=0xFC000000|(code<<19)|(p->op[1]->vecmod&0x70000);
+      code2=(p->op[0]->reg<<22)|(p->op[1]->reg);
+      if(p->op[1]->vecmod&(1<<20)) code2|=(1<<11);
+      code3=(p->op[0]->dreg<<26)|(p->op[1]->dreg);
+      code3|=(p->op[1]->vecmod&0x3fff)<<6;
+    }
     break;
   case EN_VARITHI80:
     if(code<48) code|=64;
-    code=0xFC000000|(code<<19)|(p->op[2]->vecmod&0x70000);
-    if(p->op[2]->vecmod&(1<<20)) code2|=(1<<11);
-    code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|(1<<10)|(absval(p->op[2]->offset,sec,pc,16,0)&0x3ff);
-    code3=(p->op[0]->dreg<<26)|(p->op[1]->dreg<<20)|((absval(p->op[2]->offset,sec,pc,16,0)>>10)&0x3f);
-    code3|=(p->op[2]->vecmod&0x3fff)<<6;
+    if(p->op[2]){
+      if(p->op[2]->offset){
+	p->op[2]->reg|=(absval(p->op[2]->offset,sec,pc,9,1)&0x7f);
+	p->op[2]->dreg|=(absval(p->op[2]->offset,sec,pc,9,1)>>7);
+      }
+      code=0xFC000000|(code<<19)|(p->op[2]->vecmod&0x70000);
+      if(p->op[2]->vecmod&(1<<20)) code2|=(1<<11);
+      code2=(p->op[0]->reg<<22)|(p->op[1]->reg<<12)|(1<<10)|(absval(p->op[2]->offset,sec,pc,16,0)&0x3ff);
+      code3=(p->op[0]->dreg<<26)|((p->op[1]->dreg&0x3f)<<20)|((p->op[1]->dreg&0x3c0)<<10)|((absval(p->op[2]->offset,sec,pc,16,0)>>10)&0x3f);
+      code3|=(p->op[2]->vecmod&0x3fff)<<6;
+    }else{
+      if(p->op[1]->offset){
+	p->op[1]->reg|=(absval(p->op[1]->offset,sec,pc,9,1)&0x7f);
+	p->op[1]->dreg|=(absval(p->op[1]->offset,sec,pc,9,1)>>7);
+      }
+      code=0xFC000000|(code<<19)|(p->op[1]->vecmod&0x70000);
+      if(p->op[1]->vecmod&(1<<20)) code2|=(1<<11);
+      code2=(p->op[0]->reg<<22)|(1<<10)|(absval(p->op[1]->offset,sec,pc,16,0)&0x3ff);
+      code3=(p->op[0]->dreg<<26)|((absval(p->op[1]->offset,sec,pc,16,0)>>10)&0x3f);
+      code3|=(p->op[1]->vecmod&0x3fff)<<6;
+    }
     break;
   default:
     ierror(0);
   }
 
-  if(enc==EN_VSTORE48||enc==EN_VLOAD48||
-     enc==EN_VARITHR48||enc==EN_VARITHI48){
+  if(enc>=EN_VLOAD48&&enc<=EN_VARITHI48){
     db->data[0]=(code>>16)&0xff;
     db->data[1]=(code>>24)&0xff;
     db->data[3]=(code2>>24)&0xff;
@@ -975,11 +1184,11 @@ char *parse_instruction(char *s,int *inst_len,char **ext,int *ext_len,
     s++;
   l = s - inst;
 
-  if(strncmp("divs",inst,l)){
-    
+  if(strncasecmp("divs",inst,l)&&strncmp("vreadacc",inst,l)&&
+     strncasecmp("vcmpge",inst,l)){
     for(i=0;i<16;i++){
       int cl=strlen(ccs[i]);
-      if(l>cl&&!strncmp(s-cl,ccs[i],cl)){
+      if(l>cl&&!strncasecmp(s-cl,ccs[i],cl)){
 	ext[0]=s-cl;
 	ext_len[0]=cl;
 	cnt=1;

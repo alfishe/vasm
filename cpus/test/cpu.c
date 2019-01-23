@@ -139,7 +139,7 @@ static int opt_inst(instruction *p,section *sec,taddr pc)
   /* jmp->bra */
   if(p->code==6){
     expr *tree=p->op[0]->offset;
-    if(tree->type==SYM&&tree->c.sym->sec==sec&&tree->c.sym->type==LABSYM&&
+    if(tree->type==SYM&&tree->c.sym->sec==sec&&LOCREF(tree->c.sym)&&
        tree->c.sym->pc-pc>=-128&&tree->c.sym->pc-pc<=127)
       return 7;
   }
@@ -212,7 +212,7 @@ dblock *eval_instruction(instruction *p,section *sec,taddr pc)
   }
   if(c==7){
     expr *tree=p->op[0]->offset;
-    if(!(tree->type==SYM&&tree->c.sym->sec==sec&&tree->c.sym->type==LABSYM&&
+    if(!(tree->type==SYM&&tree->c.sym->sec==sec&&LOCREF(tree->c.sym)&&
 	 tree->c.sym->pc-pc>=-128&&tree->c.sym->pc-pc<=127))
       cpu_error(0);
     else

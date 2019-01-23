@@ -59,3 +59,5 @@
   "register symbol <%s> redefined",ERROR,
   "cannot evaluate constant huge integer expression",ERROR,
   "cannot evaluate floating point expression",ERROR,            /* 60 */
+  "imported symbol <%s> was not referenced",WARNING,
+  "alignment padding (%lu) not a multiple of %lu",WARNING,

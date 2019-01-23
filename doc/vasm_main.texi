@@ -373,7 +373,7 @@ The frontend has the following error messages:
 @item 20: fail: %s
 @item 21: section offset is lower than current pc
 @item 22: character constant too long
-@item 23: undefined local symbol
+@item 23: undefined symbol <%s>
 @item 24: trailing garbage after option -%c
 @item 25: bad operand
 @item 26: missing end directive for macro "%s"
@@ -410,5 +410,9 @@ The frontend has the following error messages:
 @item 57: maximum number of macro recursions (%d) reached
 @item 58: data has been auto-aligned
 @item 59: register symbol <%s> redefined
+@item 60: cannot evaluate constant huge integer expression
+@item 61: cannot evaluate floating point expression
+@item 62: imported symbol <%s> was not referenced
+@item 63: alignment padding (%lu) not a multiple of %lu
 
 @end itemize
