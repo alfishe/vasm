@@ -576,7 +576,7 @@ mnemonic mnemonics[] = {
 
 int mnemonic_cnt=sizeof(mnemonics)/sizeof(mnemonics[0]);
 
-char *cpu_copyright="vasm 8080/gbz80/z80/z180/rcmX000 cpu backend 0.2f (c) 2007,2009 Dominic Morris";
+char *cpu_copyright="vasm 8080/gbz80/z80/z180/rcmX000 cpu backend 0.2g (c) 2007,2009 Dominic Morris";
 char *cpuname = "z80";
 int bitsperbyte = 8;
 int bytespertaddr = 2;
@@ -1660,7 +1660,7 @@ dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
                             btype==BASE_PCREL ? REL_PC : REL_ABS, bitsize, 0);
             val = apply_modifier(rl, val);
         }
-        else
+        else if (btype != BASE_NONE)
             general_error(38);  /* illegal relocation */
     }
     if (bitsize < 16 && (val<-0x80 || val>0xff))
@@ -1999,6 +1999,7 @@ dblock *eval_instruction(instruction *ip,section *sec,taddr pc)
                 error = 1;
                 break;
             }
+            offs = val;
         } else if ( (val & ~0x38) == 0 ) {
             if ( cpu_type == CPU_RCM2000 ) {
                 /* Check for valid rst on Rabbit */

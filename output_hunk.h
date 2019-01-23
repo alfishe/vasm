@@ -1,5 +1,5 @@
 /* output_hunk.h header file for AmigaOS hunk format */
-/* (c) in 2002-2014 by Frank Wille */
+/* (c) in 2002-2015 by Frank Wille */
 
 /* hunk-format relocs */
 struct hunkreloc {
@@ -60,10 +60,15 @@ struct hunkline {
 
 /* memory type */
 #define HUNKB_CHIP      30
-#define HUNKB_FAST	    31
-#define HUNKF_CHIP	    (1L<<30)
-#define HUNKF_FAST	    (1L<<31)
+#define HUNKB_FAST      31
+#define HUNKF_CHIP      (1L<<30)
+#define HUNKF_FAST      (1L<<31)
 #define HUNKF_MEMTYPE   (HUNKF_CHIP|HUNKF_FAST)
+
+/* AmigaOS memory flags */
+#define MEMF_PUBLIC     (1L<<0)
+#define MEMF_CHIP       (1L<<1)
+#define MEMF_FAST       (1L<<2)
 
 /* hunk_ext sub-types */
 #define EXT_SYMB 0

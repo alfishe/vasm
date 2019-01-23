@@ -1,6 +1,6 @@
 /*
  * cpu.c Jaguar RISC cpu description file
- * (c) in 2014 by Frank Wille
+ * (c) in 2014-2015 by Frank Wille
  */
 
 #include "vasm.h"
@@ -10,7 +10,7 @@ mnemonic mnemonics[] = {
 };
 int mnemonic_cnt = sizeof(mnemonics) / sizeof(mnemonics[0]);
 
-char *cpu_copyright = "vasm Jaguar RISC cpu backend 0.2 (c) 2014 Frank Wille";
+char *cpu_copyright = "vasm Jaguar RISC cpu backend 0.4 (c) 2014-2015 Frank Wille";
 char *cpuname = "jagrisc";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -21,21 +21,31 @@ static uint8_t cpu_type = GPU|DSP;
 static int OC_MOVEI,OC_UNPACK;
 
 /* condition codes */
-typedef struct {
-  char cc[3];
-  uint8_t flags;
-} cond_codes;
-
-static cond_codes conds[] = {
-  "T" , 0x00, "NE", 0x01, "EQ", 0x02, "CC", 0x04,
-  "HI", 0x05, "CS", 0x08, "PL", 0x14, "MI", 0x18
+static regsym cc_regsyms[] = {
+  {"T",  RTYPE_CC, 0, 0x00},
+  {"NE", RTYPE_CC, 0, 0x01},
+  {"EQ", RTYPE_CC, 0, 0x02},
+  {"CC", RTYPE_CC, 0, 0x04},
+  {"HI", RTYPE_CC, 0, 0x05},
+  {"CS", RTYPE_CC, 0, 0x08},
+  {"PL", RTYPE_CC, 0, 0x14},
+  {"MI", RTYPE_CC, 0, 0x18},
+  {"t",  RTYPE_CC, 0, 0x00},
+  {"ne", RTYPE_CC, 0, 0x01},
+  {"eq", RTYPE_CC, 0, 0x02},
+  {"cc", RTYPE_CC, 0, 0x04},
+  {"hi", RTYPE_CC, 0, 0x05},
+  {"cs", RTYPE_CC, 0, 0x08},
+  {"pl", RTYPE_CC, 0, 0x14},
+  {"mi", RTYPE_CC, 0, 0x18},
+  {NULL, 0, 0, 0}
 };
-static int conds_cnt = sizeof(conds) / sizeof(conds[0]);
 
 
 int init_cpu(void)
 {
   int i;
+  regsym *r;
 
   for (i=0; i<mnemonic_cnt; i++) {
     if (!strcmp(mnemonics[i].name,"movei"))
@@ -43,6 +53,10 @@ int init_cpu(void)
     else if (!strcmp(mnemonics[i].name,"unpack"))
       OC_UNPACK = i;
   }
+
+  /* define all condition code register symbols */
+  for (r=cc_regsyms; r->reg_name!=NULL; r++)
+    add_regsym(r);
 
   return 1;
 }
@@ -72,18 +86,168 @@ int cpu_args(char *p)
 }
 
 
-int jag_data_align(int n)
+static int parse_reg(char **p)
 {
-  if (n<=8) return 1;
-  if (n<=16) return 2;
-  if (n<=32) return 4;
-  return 8;
+  int reg = -1;
+  char *rp = skip(*p);
+  char *s;
+
+  if (s = skip_identifier(rp)) {
+    regsym *sym = find_regsym(rp,s-rp);
+
+    if (sym!=NULL && sym->reg_type==RTYPE_R) {
+      reg = sym->reg_num;
+    }
+    else if (toupper((unsigned char)*rp++) == 'R') {
+      if (sscanf(rp,"%d",&reg)!=1 || reg<0 || reg>31)
+        reg = -1;
+    }
+
+    if (reg >= 0)
+      *p = s;
+  }
+
+  return reg;
+}
+
+
+static expr *parse_cc(char **p)
+{
+  char *end;
+
+  *p = skip(*p);
+
+  if (end = skip_identifier(*p)) {
+    regsym *sym = find_regsym(*p,end-*p);
+
+    if (sym!=NULL && sym->reg_type==RTYPE_CC) {
+      *p = end;
+      return number_expr((taddr)sym->reg_num);
+    }
+  }
+
+  /* otherwise the condition code is any expression */
+  return parse_expr(p);
+}
+
+
+static void jagswap32(char *d,int32_t w)
+/* write a 32-bit word with swapped halfs (Jaguar MOVEI) */
+{
+  if (jag_big_endian) {
+    *d++ = (w >> 8) & 0xff;
+    *d++ = w & 0xff;
+    *d++ = (w >> 24) & 0xff;
+    *d = (w >> 16) & 0xff;
+  }
+  else {
+    /* @@@ Need to verify this! */
+    *d++ = w & 0xff;
+    *d++ = (w >> 8) & 0xff;
+    *d++ = (w >> 16) & 0xff;
+    *d = (w >> 24) & 0xff;
+  }
 }
 
 
 char *parse_cpu_special(char *start)
+/* parse cpu-specific directives; return pointer to end of cpu-specific text */
 {
+  char *name=start;
+  char *s;
+
+  if (s = skip_identifier(name)) {
+    /* Atari MadMac compatibility directives */
+    if (*name == '.')  /* ignore leading dot */
+      name++;
+
+    if (s-name==3 && !strnicmp(name,"dsp",3)) {
+      cpu_type = DSP;
+      eol(s);
+      return skip_line(s);
+    }
+
+    else if (s-name==3 && !strnicmp(name,"gpu",3)) {
+      cpu_type = GPU;
+      eol(s);
+      return skip_line(s);
+    }
+
+    else if (s-name==8 && !strnicmp(name,"regundef",8) ||
+             s-name==9 && !strnicmp(name,"equrundef",9)) {
+      /* undefine a register symbol */
+      s = skip(s);
+      if (name = parse_identifier(&s)) {
+        undef_regsym(name,0,RTYPE_R);
+        myfree(name);
+        eol(s);
+        return skip_line(s);
+      }
+    }
+
+    else if (s-name==7 && !strnicmp(name,"ccundef",7)) {
+      /* undefine a condition code symbol */
+      s = skip(s);
+      if (name = parse_identifier(&s)) {
+        undef_regsym(name,0,RTYPE_CC);
+        myfree(name);
+        eol(s);
+        return skip_line(s);
+      }
+    }
+  }
+
   return start;
+}
+
+
+int parse_cpu_label(char *labname,char **start)
+/* parse cpu-specific directives following a label field,
+   return zero when no valid directive was recognized */ 
+{
+  char *dir=*start;
+  char *s,*name;
+  hashdata data;
+
+  if (*dir == '.')  /* ignore leading dot */
+    dir++;
+
+  if (s = skip_identifier(dir)) {
+
+    if (s-dir==6 && !strnicmp(dir,"regequ",6) ||
+        s-dir==4 && !strnicmp(dir,"equr",4)) {
+      /* label REGEQU Rn || label EQUR Rn */
+      int r;
+
+      if ((r = parse_reg(&s)) >= 0)
+        new_regsym(0,0,labname,RTYPE_R,0,r);
+      else
+        cpu_error(3);  /* register expected */
+      eol(s);
+      *start = skip_line(s);
+      return 1;
+    }
+
+    else if (s-dir==5 && !strnicmp(dir,"ccdef",5)) {
+      /* label CCDEF expr */
+      expr *ccexp;
+      taddr val;
+
+      if ((ccexp = parse_cc(&s)) != NULL) {
+        if (eval_expr(ccexp,&val,NULL,0))
+          new_regsym(0,0,labname,RTYPE_CC,0,(int)val);
+        else
+          general_error(30);  /* expression must be a constant */
+      }
+      else
+        general_error(9);  /* @@@ */
+      eol(s);
+      *start = skip_line(s);
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 
@@ -96,50 +260,12 @@ operand *new_operand(void)
 }
 
 
-static int parse_reg(char **p)
+int jag_data_operand(int bits)
+/* return data operand type for these number of bits */
 {
-  char *rp = skip(*p);
-  int reg;
-
-  if (toupper((unsigned char)*rp++) != 'R')
-    return -1;
-  if (sscanf(rp,"%d",&reg) != 1)
-    return -1;
-
-  /* "R0 .. R31" are valid */
-  if (reg<0 || reg>31)
-    return -1;
-
-  /* skip digits and return new pointer together with register number */
-  while (isdigit((unsigned char)*rp))
-    rp++;
-  *p = skip(rp);
-  return reg;
-}
-
-
-static expr *parse_cc(char **p)
-{
-  char *ccid,*cp;
-
-  *p = cp = skip(*p);
-
-  if (ccid = parse_identifier(&cp)) {
-    int i;
-
-    /* check for a known condition code and replace by numerical value */
-    for (i=0; i<conds_cnt; i++) {
-      if (!stricmp(conds[i].cc,ccid)) {
-        myfree(ccid);
-        *p = cp;
-        return number_expr((taddr)conds[i].flags);
-      }
-    }
-    myfree(ccid);
-  }
-
-  /* otherwise the condition code is any expression */
-  return parse_expr(p);
+  if (bits & OPSZ_SWAP)
+    return DATAI_OP;
+  return bits==64 ? DATA64_OP : DATA_OP;
 }
 
 
@@ -156,6 +282,7 @@ int parse_operand(char *p, int len, operand *op, int required)
         p = skip(p+1);  /* skip optional '#' */
     case REL:
     case DATA_OP:
+    case DATAI_OP:
       op->val = parse_expr(&p);
       break;
 
@@ -258,17 +385,31 @@ static int32_t eval_oper(instruction *ip,operand *op,section *sec,
       if (!eval_expr(op->val,&val,sec,pc))
         btype = find_base(op->val,&base,sec,pc);
 
-      if (optype==IMM0 || optype==CC) {
-        loval = 0;
-        hival = 31;
-      }
-      else if (optype==IMM1) {
-        loval = 1;
-        hival = 32;
-      }
-      else if (optype==SIMM) {
-        loval = -16;
-        hival = 15;
+      if (optype==IMM0 || optype==CC || optype==IMM1 || optype==SIMM) {
+        if (base != NULL) {
+          loval = -32;
+          hival = 32;
+          if (btype != BASE_ILLEGAL) {
+            if (db) {
+              add_nreloc_masked(&db->relocs,base,val,
+                                btype==BASE_PCREL?REL_PC:REL_ABS,
+                                5,6,0x1f);
+              base = NULL;
+            }
+          }
+        }
+        else if (optype==IMM1) {
+          loval = 1;
+          hival = 32;
+        }
+        else if (optype==SIMM) {
+          loval = -16;
+          hival = 15;
+        }
+        else {
+          loval = 0;
+          hival = 31;
+        }
       }
       else if (optype==IR14D || optype==IR15D) {
         if (base==NULL && val==0) {
@@ -304,8 +445,8 @@ static int32_t eval_oper(instruction *ip,operand *op,section *sec,
         hival = 15;
         if (base!=NULL && btype==BASE_OK) {
           if (is_pc_reloc(base,sec)) {
-            /* external label or from a different section */
-            add_nreloc(&db->relocs,base,val,REL_PC,5,11);
+            /* external label or from a different section (distance / 2) */
+            add_nreloc_masked(&db->relocs,base,val-2,REL_PC,5,6,0x3e);
           }
           else if (LOCREF(base)) {
             /* known label from the same section doesn't need a reloc */
@@ -383,21 +524,8 @@ dblock *eval_instruction(instruction *ip, section *sec, taddr pc)
   }
 
   /* extra words for MOVEI are always written in the order lo-word, hi-word */
-  if (size == 6) {
-    if (jag_big_endian) {
-      db->data[2] = (extra >> 8) & 0xff;
-      db->data[3] = extra & 0xff;
-      db->data[4] = (extra >> 24) & 0xff;
-      db->data[5] = (extra >> 16) & 0xff;
-    }
-    else {
-      /* @@@ Need to verify this! */
-      db->data[2] = extra & 0xff;
-      db->data[3] = (extra >> 8) & 0xff;
-      db->data[4] = (extra >> 16) & 0xff;
-      db->data[5] = (extra >> 24) & 0xff;
-    }
-  }
+  if (size == 6)
+    jagswap32(&db->data[2],extra);
 
   return db;
 }
@@ -411,7 +539,7 @@ dblock *eval_data(operand *op, size_t bitsize, section *sec, taddr pc)
   if (bitsize!=8 && bitsize!=16 && bitsize!=32 && bitsize!=64)
     cpu_error(0,bitsize);  /* data size not supported */
 
-  if (op->type!=DATA_OP && op->type!=DATA64_OP)
+  if (op->type!=DATA_OP && op->type!=DATA64_OP && op->type!=DATAI_OP)
     ierror(0);
 
   db->size = bitsize >> 3;
@@ -430,19 +558,34 @@ dblock *eval_data(operand *op, size_t bitsize, section *sec, taddr pc)
       int btype;
 
       btype = find_base(op->val,&base,sec,pc);
-      if (base)
-        add_nreloc(&db->relocs,base,val,
-                   btype==BASE_PCREL?REL_PC:REL_ABS,bitsize,0);
-      else
+      if (base!=NULL && btype!=BASE_ILLEGAL) {
+        if (op->type == DATAI_OP) {
+          /* swapped: two relocations for LSW first, then MSW */
+          add_nreloc_masked(&db->relocs,base,val,
+                            btype==BASE_PCREL?REL_PC:REL_ABS,
+                            16,0,0xffff);
+          add_nreloc_masked(&db->relocs,base,val,
+                            btype==BASE_PCREL?REL_PC:REL_ABS,
+                            16,0,0xffff0000);
+        }
+        else /* normal 8, 16, 32 bit relocation */
+          add_nreloc(&db->relocs,base,val,
+                     btype==BASE_PCREL?REL_PC:REL_ABS,bitsize,0);
+      }
+      else if (btype != BASE_NONE)
         general_error(38);  /* illegal relocation */
     }
+
     switch (db->size) {
       case 1:
         db->data[0] = val & 0xff;
         break;
       case 2:
       case 4:
-        setval(jag_big_endian,db->data,db->size,val);
+        if (op->type == DATAI_OP)
+          jagswap32(db->data,(int32_t)val);
+        else
+          setval(jag_big_endian,db->data,db->size,val);
         break;
       default:
         ierror(0);

@@ -22,7 +22,7 @@
   "character constant too long",ERROR,
   "undefined symbol <%s>",NOLINE|ERROR,
   "trailing garbage after option -%c",NOLINE|WARNING,
-  "undefined macro parameter \'\\%d\'",ERROR,
+  "missing macro parameters",ERROR,
   "missing end directive for macro \"%s\"",ERROR|FATAL,         /* 25 */
   "macro definition inside macro \"%s\"",ERROR|FATAL,
   "maximum number of %d macro arguments exceeded",ERROR,
@@ -37,13 +37,13 @@
   "no current macro to exit",ERROR,
   "internal symbol %s redefined by user",FATAL,
   "illegal relocation",ERROR,
-  "macro id stack overflow",ERROR,
-  "macro id pull without matching push",ERROR,                  /* 40 */
+  "",ERROR,
+  "",ERROR,                                                     /* 40 */
   "division by zero",ERROR,
   "illegal macro argument",ERROR,
   "reloc org is already set",ERROR|FATAL,
   "reloc org was not set",ERROR,
-  "macro id insert on empty stack",ERROR,                       /* 45 */
+  "",ERROR,                                                     /* 45 */
   "bad file-offset argument",ERROR,
   "assertion \"%s\" failed: %s",ERROR,
   "cannot declare structure within structure",ERROR,
@@ -60,4 +60,15 @@
   "cannot evaluate constant huge integer expression",ERROR,
   "cannot evaluate floating point expression",ERROR,            /* 60 */
   "imported symbol <%s> was not referenced",WARNING,
-  "alignment padding (%lu) not a multiple of %lu",WARNING,
+  "symbol <%s> already defined with %s scope",WARNING,
+  "unexpected \"else\" without \"if\"",ERROR,
+  "unexpected \"endif\" without \"if\"",ERROR,
+  "maximum if-nesting depth exceeded (%d levels)",FATAL|ERROR,  /* 65 */
+  "\"endif\" missing for conditional block started at %s line %d",ERROR,
+  "repeatedly defined symbol <%s>",ERROR,
+  "macro <%s> does not exist",ERROR,
+  "register <%s> does not exist",ERROR,
+  "register symbol <%s> has wrong type",ERROR,                  /* 70 */
+  "cannot mix positional and keyword arguments",ERROR,
+  "undefined macro argument name",ERROR,
+  "required macro argument %d was left out",ERROR,

@@ -1,12 +1,10 @@
 /* output_aout.c a.out output driver for vasm */
-/* (c) in 2008-2012 by Frank Wille */
+/* (c) in 2008-2015 by Frank Wille */
 
 #include "vasm.h"
 #include "output_aout.h"
-#if MID
-static char *copyright="vasm a.out output module 0.5 (c) 2008-2012 Frank Wille";
-
-static int mid = MID;
+#ifdef MID
+static char *copyright="vasm a.out output module 0.6 (c) 2008-2015 Frank Wille";
 
 static section *sections[3];
 static utaddr secsize[3];
@@ -19,15 +17,20 @@ static struct StrTabList aoutstrlist;
 static struct list treloclist;
 static struct list dreloclist;
 
+static int mid = -1;
 static int isPIC = 1;
 
 #define SECT_ALIGN 4  /* .text and .data are aligned to 32 bits */
 
 
 static int get_sec_type(section *s)
-/* scan section attributes for type, 0=text, 1=data, 2=bss */
+/* scan section attributes for type, 0=text, 1=data, 2=bss,
+   -1: ORG-section at an absolute address */
 {
   char *a = s->attr;
+
+  if (s->flags & ABSOLUTE)
+    return -1;
 
   while (*a) {
     switch (*a++) {
@@ -124,8 +127,13 @@ static uint32_t aoutstd_getrinfo(rlist *rl,int xtern,char *sname,int be)
 }
 
 
-static void aout_initwrite(section *sec)
+static void aout_initwrite(section *firstsec)
 {
+  section *sec;
+
+  if (mid == -1)
+    mid = MID;
+
   initlist(&aoutstrlist.l);
   aoutstrlist.hashtab = mycalloc(STRHTABSIZE*sizeof(struct StrTabNode *));
   aoutstrlist.nextoffset = 4;  /* first string is always at offset 4 */
@@ -139,13 +147,15 @@ static void aout_initwrite(section *sec)
   sections[_TEXT] = sections[_DATA] = sections[_BSS] = NULL;
   secsize[_TEXT] = secsize[_DATA] = secsize[_BSS] = 0;
 
-  for (; sec; sec=sec->next) {
+  for (sec=firstsec; sec; sec=sec->next) {
     int i;
 
     /* section size is assumed to be in in (sec->pc - sec->org), otherwise
        we would have to calculate it from the atoms and store it there */
-    if ((sec->pc - sec->org) > 0 || (sec->flags & HAS_SYMBOLS)) {
+    if (get_sec_size(sec) > 0 || (sec->flags & HAS_SYMBOLS)) {
       i = get_sec_type(sec);
+      if (i < 0)
+        continue;  /* ignore ORG sections for later */
       if (!sections[i]) {
         sections[i] = sec;
         secsize[i] = get_sec_size(sec);
@@ -154,6 +164,12 @@ static void aout_initwrite(section *sec)
       else
         output_error(7,sec->name);
     }
+  }
+
+  /* now scan for absolute ORG-sections and add their aligned size to .text */
+  for (sec=firstsec; sec; sec=sec->next) {
+    if (sec->flags & ABSOLUTE)
+      secsize[_TEXT] += balign(secsize[_TEXT],sec->align) + get_sec_size(sec);
   }
 
   secoffs[_TEXT] = 0;
@@ -267,8 +283,12 @@ static void aout_symconvert(symbol *sym,int symbind,int syminfo,int be)
     }
     else if (sym->sec) {
       /* address symbol */
-      type = sectype[sym->sec->idx] | ext;
-      val += secoffs[sym->sec->idx];  /* a.out requires to add sec. offset */
+      if (!(sym->flags & ABSLABEL)) {
+        type = sectype[sym->sec->idx] | ext;
+        val += secoffs[sym->sec->idx];  /* a.out requires to add sec. offset */
+      }
+      else  /* absolute ORG section: convert labels to ABS symbols */
+        type = N_ABS | ext;
     }
     else if (sym->type==EXPRESSION) {
       if (sym->flags & EXPORT) {
@@ -461,6 +481,30 @@ static void aout_writesection(FILE *f,section *sec,taddr sec_align)
 }
 
 
+static void aout_writeorg(FILE *f,section *sec,taddr sec_align)
+/* write all absolute ORG-sections appended to .text */
+{
+  taddr pc = get_sec_size(sections[_TEXT]);
+  taddr npc;
+  atom *a;
+
+  for (; sec; sec=sec->next) {
+    if (sec->flags & ABSOLUTE) {
+      fwalign(f,pc,sec->align);
+      for (a=sec->first; a; a=a->next) {
+        npc = fwpcalign(f,a,sec,pc);
+        if (a->type == DATA)
+          fwdata(f,a->content.db->data,a->content.db->size);
+        else if (a->type == SPACE)
+          fwsblock(f,a->content.sb);
+        pc = npc + atom_size(a,sec,npc);
+      }
+    }
+  }
+  fwalign(f,pc,sec_align);
+}
+
+
 void aout_writerelocs(FILE *f,struct list *l)
 {
   struct RelocNode *rn;
@@ -512,7 +556,8 @@ static void write_output(FILE *f,section *sec,symbol *sym)
               secsize[_BSS],
               aoutsymlist.nextindex * sizeof(struct nlist32),
               0,trsize,drsize,be);
-  aout_writesection(f,sections[_TEXT],SECT_ALIGN);
+  aout_writesection(f,sections[_TEXT],0);
+  aout_writeorg(f,sec,SECT_ALIGN);
   aout_writesection(f,sections[_DATA],SECT_ALIGN);
   aout_writerelocs(f,&treloclist);
   aout_writerelocs(f,&dreloclist);

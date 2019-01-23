@@ -1,6 +1,6 @@
 /*
 ** cpu.c x86 cpu-description file
-** (c) in 2005-2006,2011 by Frank Wille
+** (c) in 2005-2006,2011,2015 by Frank Wille
 */
 
 #include "vasm.h"
@@ -10,7 +10,7 @@ mnemonic mnemonics[] = {
 };
 int mnemonic_cnt = sizeof(mnemonics)/sizeof(mnemonics[0]);
 
-char *cpu_copyright = "vasm x86 cpu backend 0.6 (c) 2005-2006,2011 Frank Wille";
+char *cpu_copyright = "vasm x86 cpu backend 0.6a (c) 2005-2006,2011,2015 Frank Wille";
 char *cpuname = "x86";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -1821,7 +1821,7 @@ dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
       add_nreloc(&db->relocs,base,val,
                  btype==BASE_PCREL?REL_PC:REL_ABS,
                  bitsize,0);
-    else
+    else if (btype != BASE_NONE)
       general_error(38);  /* illegal relocation */
   }
   write_taddr(db->data,val,bitsize);

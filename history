@@ -1,6 +1,79 @@
 vasm history
 =============
 
+- 1.7c (15.05.15)
+o Complete redesign of the internal macro handling, which gives each
+  syntax module more possibilities for individual macro features.
+o New syntax module: madmac, which tries to be compatible to the Atari
+  Madmac assembler syntax, used for 6502, 68000 and Jaguar RISC targets.
+o New CPU backend for the virtual Trillek TR3200 CPU (known from 0x10c).
+o Allow arithmetic operations with more than one label from absolute ORG
+  sections (like label1|label2). Support also depends on cpu backend and
+  should work at least in data for most backends now.
+o Stop parsing a file at CP/M EOF character (0x1a), as seen in some sources.
+o No longer allow redefining a symbol, defined by an equ/equiv directive,
+  with a set-directive.
+o Fixed problems with escape character sequences in strings inside a
+  macro definition, when syntax module supports escape characters.
+o m68k: In MULx.L Dn,Dl the Dh bits (bit 0-2, 2nd word) are undefined. Most
+  assemblers set Dh=Dl, similar to Dr=Dq in DIVx.L. So should we.
+o m68k: New option -regsymredef allows redefinition of register symbols
+  while parsing the source.
+o m68k: Fixed "OPT 0" in PhxAss compatibility mode (broken since V1.7),
+  which made all branches 16-bit size.
+o m68k: Register lists defined by REG, EQURL, FREQ, FEQURL must not be
+  redefinable.
+o PPC: Support for floating point data constants.
+o jagrisc: Added absolute and relative 5 bit source operand relocations.
+  Fixed relative JR relocations.
+o jagrisc: Fixed (R14+Rn) addressing mode.
+o jagrisc: New JRISC specific directives: GPU, DSP, REGEQU, EQUR, REGUNDEF,
+  EQURUNDEF, CCDEF, CCUNDEF (madmac/smac compatible).
+o z80: Fixed RST (again), when referencing labels from an absolute section.
+o mot-syntax: New option -allmp makes all 36 macro arguments available, also
+  in standard vasm mode (no PhxAss or Devpac compatibility required).
+o mot-syntax: New option -warncomm to warn about blanks in the operand
+  field, which may start an unwanted comment.
+o mot-syntax: CNOP fills the padding words with NOP instructions in an
+  M68k code section.
+o mot-syntax: The optional third argument of the SECTION directive may be
+  written as a numerical constant to define any memory attributes (hunk
+  format only).
+o mot-syntax: New directive WEAK, to declare a symbol having weak binding,
+  for those output formats which support it.
+o mot-syntax: New directive COMMON, to create a common symbol.
+o mot-syntax: Made PRINTT and PRINTV directives more compatible to AsmOne.
+o mot-syntax: Fixed RS.x without operand (same as RS.x 0).
+o std-syntax: The standard GNU-as macro syntax, with named arguments,
+  default values and qualifiers, is supported now. Macro names became
+  case-insensitive.
+o std-syntax: Directives are case-insensitive.
+o std-syntax: New optional, non-standard, third argument for the .section
+  directive defines target specific memory attributes (currently hunk
+  format only).
+o std-syntax: .b/.w/.l extensions do not belong to an identifier, when
+  the CPU is M68k.
+o std-syntax: Directives to define floating point constants in data:
+  .float, .single and .double.
+o std-syntax: .equiv directive. Works like .set and .equ, but cannot be
+  redefined.
+o aout-output: Absolute ORG sections are appended to a .text section.
+  Support for Jaguar, which uses MID 0.
+o bin-output: Sort sections by their start address before writing them.
+o hunk-output: Align M68k code sections with NOP instructions.
+o hunk-output: Supports any memory attributes in objects and executables.
+o hunk-output: Warn about unsupported weak symbols.
+o hunk-output: Fixed illegal memory access with unreferenced common symbols.
+o hunk-output: Automatically generate short relocation hunks (HUNK_DREL32)
+  in executables, when possible and not forbidden by a -kick1hunks option.
+o hunk-output: Support for 32-bit PC-relative relocations in executables
+  (available since AmigaOS3.0).
+o tos-ouput: Warn about unsupported weak symbols.
+o elf-output: Add support for jagrisc (EM_JAGRISC = 0x9004). This is an
+  unofficial definition done by the Jaguar scene.
+o aout-output: For M68k use the SUN010 or SUN020 MID, depending on the
+  highest cpu type being used in the source.
+
 - 1.7b (28.12.14)
 o Fixed stack overflow and crash when using recursively defined symbols.
   Bug was present since introducing new 128-bit and float expressions in 1.7.

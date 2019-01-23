@@ -1,6 +1,6 @@
 /*
 ** cpu.h Motorola M68k, CPU32 and ColdFire cpu-description header-file
-** (c) in 2002,2006-2014 by Frank Wille
+** (c) in 2002,2006-2015 by Frank Wille
 */
 
 #define BIGENDIAN 1
@@ -395,6 +395,10 @@ struct cpu_models {
 #define RSTYPE_FPn  2
 
 
-/* exported functions */
+/* MID for a.out format */
+extern int m68k_mid;
+#define MID m68k_mid
 
+/* exported functions */
 int parse_cpu_label(char *,char **);
+#define PARSE_CPU_LABEL(l,s) parse_cpu_label(l,s)

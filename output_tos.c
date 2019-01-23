@@ -74,7 +74,7 @@ static int tos_initwrite(section *sec,symbol *sym)
   for (; sym; sym=sym->next) {
     /* ignore symbols preceded by a '.' and internal symbols */
     if (*sym->name!='.' && *sym->name!=' ') {
-      if (!(sym->flags & (VASMINTERN|WEAK|COMMON)) && sym->type == LABSYM) {
+      if (!(sym->flags & (VASMINTERN|COMMON)) && sym->type == LABSYM) {
         nsyms++;
         if ((strlen(sym->name) > DRI_NAMELEN) && tos_hisoft_dri)
           nsyms++;  /* extra symbol for long name */
@@ -244,7 +244,9 @@ static void tos_symboltable(FILE *f,symbol *sym)
   for (; sym; sym=sym->next) {
     /* The Devpac DRI symbol table in executables contains all labels,
        no matter if global or local. But no equates or other types. */
-    if (!(sym->flags & (VASMINTERN|WEAK|COMMON)) && sym->type == LABSYM) {
+    if (!(sym->flags & (VASMINTERN|COMMON)) && sym->type == LABSYM) {
+      if (sym->flags & WEAK)
+        output_error(10,sym->name);  /* weak symbol not supported */
       t = labtype[sym->sec->idx] | STYP_DEFINED | STYP_GLOBAL;
       write_dri_sym(f,sym->name,t,tos_sym_value(sym,textbasedsyms));
     }

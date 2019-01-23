@@ -1,16 +1,17 @@
 /* output_hunk.c AmigaOS hunk format output driver for vasm */
-/* (c) in 2002-2014 by Frank Wille */
+/* (c) in 2002-2015 by Frank Wille */
 
 #include "vasm.h"
 #include "output_hunk.h"
 #if defined(VASM_CPU_M68K) || defined(VASM_CPU_PPC)
-static char *copyright="vasm hunk format output module 2.5 (c) 2002-2014 Frank Wille";
+static char *copyright="vasm hunk format output module 2.7 (c) 2002-2015 Frank Wille";
 int hunk_onlyglobal;
 
 static int databss;
 static int kick1;
 static int exthunk;
 static int genlinedebug;
+static uint32_t sec_cnt;
 
 
 static uint32_t strlen32(char *s)
@@ -27,6 +28,40 @@ static void fwname(FILE *f,char *name)
 
   fwdata(f,name,n);
   fwalign(f,n,4);
+}
+
+
+static void fwmemflags(FILE *f,section *s,uint32_t data)
+/* write memory attributes with data (section size or type) */
+{
+  uint32_t mem = s->memattr;
+
+  if ((mem & ~MEMF_PUBLIC) == 0) {
+    fw32(f,data,1);
+  }
+  else if ((mem & ~MEMF_PUBLIC) == MEMF_CHIP) {
+    fw32(f,HUNKF_CHIP|data,1);
+  }
+  else if ((mem & ~MEMF_PUBLIC) == MEMF_FAST) {
+    fw32(f,HUNKF_FAST|data,1);
+  }
+  else {
+    fw32(f,HUNKF_MEMTYPE|data,1);
+    fw32(f,mem,1);
+  }
+}
+
+
+static void fwnopalign(FILE *f,taddr n)
+/* align a 68k code section with NOP instructions */
+{
+  taddr i;
+
+  n = balign(n,4);
+  if (n & 1)
+    ierror(0);
+  for (i=0; i<n; i+=2)
+    fw16(f,0x4e71,1);
 }
 
 
@@ -52,8 +87,6 @@ static uint32_t scan_attr(section *sec)
 #endif
         case 'd': type = HUNK_DATA; break;
         case 'u': type = HUNK_BSS; break;
-        case 'C': type |= HUNKF_CHIP; break;
-        case 'F': type |= HUNKF_FAST; break;
       }
     }
   }
@@ -76,7 +109,7 @@ static section *check_symbols(section *first_sec,symbol *sym)
   int abs_detect = 0;  /* any absolute symbol definitions present? */
 
   for (sec=first_sec; sec; sec=sec->next) {
-    if ((scan_attr(sec) & ~HUNKF_MEMTYPE) != HUNK_BSS)
+    if (scan_attr(sec) != HUNK_BSS)
       first_nonbss = sec;
 
     /* remember all common-symbol references */
@@ -121,6 +154,12 @@ static section *check_symbols(section *first_sec,symbol *sym)
       }
       add_atom(first_nonbss,new_data_atom(db,4));
     }
+    else if (sym->flags & WEAK) {
+      /* weak symbols are not supported, make it global */
+      sym->flags &= ~WEAK;
+      sym->flags |= EXPORT;
+      output_error(10,sym->name);
+    }
     else if (sym->type==EXPRESSION && (sym->flags & EXPORT))
       abs_detect = 1;
   }
@@ -136,19 +175,16 @@ static section *check_symbols(section *first_sec,symbol *sym)
 }
 
 
-static uint32_t prepare_sections(section *sec)
+static void prepare_sections(section *sec)
 /* assign an index to each section, delete empty ones,
-   returns number of sections present */
+   set sec_cnt to number of sections present */
 {
-  uint32_t cnt = 0;
-
-  for (; sec; sec=sec->next) {
+  for (sec_cnt=0; sec!=NULL; sec=sec->next) {
     if (get_sec_size(sec)!=0 || (sec->flags & HAS_SYMBOLS))
-      sec->idx = cnt++;
+      sec->idx = sec_cnt++;
     else
       sec->flags |= SEC_DELETED;
   }
-  return cnt;
 }
 
 
@@ -390,7 +426,8 @@ static void process_relocs(rlist *rl,struct list *reloclist,
   do {
     struct hunkreloc *hr = convert_reloc(rl,pc);
 
-    if (hr!=NULL && (xreflist!=NULL || hr->hunk_id==HUNK_ABSRELOC32)) {
+    if (hr!=NULL && (xreflist!=NULL || hr->hunk_id==HUNK_ABSRELOC32 ||
+                     hr->hunk_id==HUNK_RELRELOC32)) {
       addtail(reloclist,&hr->n);       /* add new relocation */
     }
     else {
@@ -410,47 +447,71 @@ static void process_relocs(rlist *rl,struct list *reloclist,
 }
 
 
-static void reloc_hunk(FILE *f,uint32_t type,struct list *reloclist)
+static void reloc_hunk(FILE *f,uint32_t type,int shrt,struct list *reloclist)
 /* write all section-offsets for one relocation type */
 {
-  int headerflag = 0;
+  int bytes = 0;
+  uint32_t idx;
 
-  for (;;) {
+  for (idx=0; idx<sec_cnt; idx++) {
     struct hunkreloc *r,*next;
-    int idx;
     uint32_t n;
+    int off16;
 
-    for (r=(struct hunkreloc *)reloclist->first,idx=-1,n=0;
+    for (r=(struct hunkreloc *)reloclist->first,n=0,off16=1;
          r->n.next; r=(struct hunkreloc *)r->n.next) {
-      if (r->hunk_id == type) {
-        if (idx < 0)
-          idx = r->hunk_index;
-        if (r->hunk_index == idx)
-          n++;
+      if (r->hunk_id==type && r->hunk_index==idx) {
+        n++;
+        if (r->hunk_offset >= 0x10000)
+          off16 = 0;
       }
     }
+    if (shrt && (n>=0x10000 || off16==0))
+      continue;  /* relocs for this hunk don't fit into 16-bit entries */
     if (n > 0) {
-      if (!headerflag) {
-        fw32(f,type,1);
-        headerflag = 1;
+      if (bytes == 0) {
+        if (shrt && type==HUNK_ABSRELOC32)
+          fw32(f,HUNK_DREL32,1);  /* RELOC32SHORT is DREL32 for OS2.0 */
+        else
+          fw32(f,type,1);
+        bytes = 4;
       }
-      fw32(f,n,1);
-      fw32(f,(uint32_t)idx,1);
+      if (shrt) {
+        fw16(f,n,1);
+        fw16(f,idx,1);
+        bytes += 4;
+      }
+      else {
+        fw32(f,n,1);
+        fw32(f,idx,1);
+        bytes += 8;
+      }
       r = (struct hunkreloc *)reloclist->first;
       while (next = (struct hunkreloc *)r->n.next) {
         if (r->hunk_id==type && r->hunk_index==idx) {
-          fw32(f,r->hunk_offset,1);
+          if (shrt) {
+            fw16(f,r->hunk_offset,1);
+            bytes += 2;
+          }
+          else {
+            fw32(f,r->hunk_offset,1);
+            bytes += 4;
+          }
           remnode(&r->n);
           myfree(r);
         }
         r = next;
       }
     }
-    else
-      break;  /* no more relocations for this type found */
   }
-  if (headerflag)
-    fw32(f,0,1);
+  if (bytes) {
+    if (shrt) {
+      fw16(f,0,1);
+      fwalign(f,bytes+2,4);
+    }
+    else
+      fw32(f,0,1);
+  }
 }
 
 
@@ -604,10 +665,10 @@ static void write_object(FILE *f,section *sec,symbol *sym)
           output_error(3,sec->attr);  /* section attributes not suppported */
           type = HUNK_DATA;  /* default */
         }
-        fw32(f,type,1);
+        fwmemflags(f,sec,type);
         fw32(f,(get_sec_size(sec)+3)>>2,1);  /* size */
 
-        if ((type & ~HUNKF_MEMTYPE) != HUNK_BSS) {
+        if (type != HUNK_BSS) {
           /* write contents */
           utaddr pc=0,npc,i;
 
@@ -637,16 +698,19 @@ static void write_object(FILE *f,section *sec,symbol *sym)
 
             pc = npc + atom_size(a,sec,npc);
           }
-          fwalign(f,pc,4);
+          if (type == HUNK_CODE && (pc&1) == 0)
+            fwnopalign(f,pc);
+          else
+            fwalign(f,pc,4);
         }
 
         /* relocation hunks */
-        reloc_hunk(f,HUNK_ABSRELOC32,&reloclist);
-        reloc_hunk(f,HUNK_RELRELOC8,&reloclist);
-        reloc_hunk(f,HUNK_RELRELOC16,&reloclist);
-        reloc_hunk(f,HUNK_RELRELOC26,&reloclist);
-        reloc_hunk(f,HUNK_RELRELOC32,&reloclist);
-        reloc_hunk(f,HUNK_DREL16,&reloclist);
+        reloc_hunk(f,HUNK_ABSRELOC32,0,&reloclist);
+        reloc_hunk(f,HUNK_RELRELOC8,0,&reloclist);
+        reloc_hunk(f,HUNK_RELRELOC16,0,&reloclist);
+        reloc_hunk(f,HUNK_RELRELOC26,0,&reloclist);
+        reloc_hunk(f,HUNK_RELRELOC32,0,&reloclist);
+        reloc_hunk(f,HUNK_DREL16,0,&reloclist);
 
         /* external references and global definitions */
         exthunk = 0;
@@ -682,11 +746,10 @@ static void write_object(FILE *f,section *sec,symbol *sym)
 
 static void write_exec(FILE *f,section *sec,symbol *sym)
 {
-  uint32_t sec_cnt;
   section *s;
 
   sec = check_symbols(sec,sym);
-  sec_cnt = prepare_sections(sec);
+  prepare_sections(sec);
 
   /* write header */
   fw32(f,HUNK_HEADER,1);
@@ -700,7 +763,7 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
     /* write section sizes and memory flags */
     for (s=sec; s; s=s->next) {
       if (!(s->flags & SEC_DELETED))
-      	fw32(f,(scan_attr(s)&HUNKF_MEMTYPE)|((get_sec_size(s)+3)>>2),1);
+        fwmemflags(f,s,(get_sec_size(s)+3)>>2);
     }
 
     /* section hunk loop */
@@ -715,7 +778,7 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
         initlist(&linedblist);
 
         /* write hunk-type and size */
-        if (!(type = scan_attr(sec) & ~HUNKF_MEMTYPE)) {
+        if (!(type = scan_attr(sec))) {
           output_error(3,sec->attr);  /* section attributes not suppported */
           type = HUNK_DATA;  /* default */
         }
@@ -751,12 +814,18 @@ static void write_exec(FILE *f,section *sec,symbol *sym)
 
             pc = npc + atom_size(a,sec,npc);
           }
-          fwalign(f,pc,4);
+          if (type == HUNK_CODE && (pc&1) == 0)
+            fwnopalign(f,pc);
+          else
+            fwalign(f,pc,4);
         }
         else /* HUNK_BSS */
           fw32(f,(get_sec_size(sec)+3)>>2,1);
 
-        reloc_hunk(f,HUNK_ABSRELOC32,&reloclist);
+        if (!kick1)
+          reloc_hunk(f,HUNK_ABSRELOC32,1,&reloclist);
+        reloc_hunk(f,HUNK_ABSRELOC32,0,&reloclist);
+        reloc_hunk(f,HUNK_RELRELOC32,1,&reloclist);
 
         if (!no_symbols) {
           /* symbol table */

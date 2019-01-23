@@ -1,6 +1,6 @@
 /*
 ** cpu.c Motorola M68k, CPU32 and ColdFire cpu-description file
-** (c) in 2002-2014 by Frank Wille
+** (c) in 2002-2015 by Frank Wille
 */
 
 #include <math.h>
@@ -24,10 +24,12 @@ struct cpu_models models[] = {
 int model_cnt = sizeof(models)/sizeof(models[0]);
 
 
-char *cpu_copyright="vasm M68k/CPU32/ColdFire cpu backend 2.0d (c) 2002-2014 Frank Wille";
+char *cpu_copyright="vasm M68k/CPU32/ColdFire cpu backend 2.0f (c) 2002-2015 Frank Wille";
 char *cpuname = "M68k";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
+
+int m68k_mid = 1;                     /* default a.out MID: 68000/68010 */
 
 static uint32_t cpu_type = m68000;
 static expr *baseexp[7];              /* basereg: expression loaded to reg. */
@@ -65,6 +67,7 @@ static unsigned char warn_opts = 0;   /* warn on optimizations/translations */
 static unsigned char convert_brackets = 0;  /* convert [ into ( for <020 */
 static unsigned char typechk = 1;     /* check value types and ranges */
 static unsigned char ign_unambig_ext = 0;  /* don't check unambig. size ext. */
+static unsigned char regsymredef = 0; /* allow redefinition of reg. symbols */
 static unsigned char phxass_compat = 0;
 static unsigned char devpac_compat = 0;
 static char current_ext;              /* extension of current parsed inst. */
@@ -225,11 +228,11 @@ int m68k_data_operand(int bits)
     case 16: return OP_D16;
     case 32: return OP_D32;
     case 64: return OP_D64;
-    case -32: return OP_F32;
-    case -64: return OP_F64;
-    case -96: return OP_F96;
+    case OPSZ_FLOAT|32: return OP_F32;
+    case OPSZ_FLOAT|64: return OP_F64;
+    case OPSZ_FLOAT|96: return OP_F96;
   }
-  cpu_error(38,abs(bits));  /* data obj. with n bits size are not supported */
+  cpu_error(38,OPSZ_BITS(bits)); /* data obj. with n bits size are not supp. */
   return 0;
 }
 
@@ -4649,8 +4652,8 @@ int init_cpu()
   }
 
   /* predefine some register symbols */
-  new_regsym(0,elfregs?"%sp":"sp",RSTYPE_An,0,7);
-  new_regsym(0,elfregs?"%fp":"fp",RSTYPE_An,0,6);
+  new_regsym(0,0,elfregs?"%sp":"sp",RSTYPE_An,0,7);
+  new_regsym(0,0,elfregs?"%fp":"fp",RSTYPE_An,0,6);
 
   /* reset baseregs */
   for (i=0; i<7; i++)
@@ -4694,8 +4697,12 @@ static void set_cpu_type(uint32_t type,int addatom)
     cpu_type = (cpu_type & ~(m68881|m68882)) | type;
   else if (type == m68851)
     cpu_type |= m68851;
+
   if (addatom)
     add_cpu_opt(0,OCMD_CPU,cpu_type);
+
+  if (cpu_type & (m68020up | mcf))
+    m68k_mid = 2;  /* need 68020+ */
 }
 
 
@@ -4789,6 +4796,8 @@ int cpu_args(char *arg)
     modify_cpu_err(WARNING,25,29,32,36,0);
   else if (!strcmp(p,"-conv-brackets"))
     convert_brackets = 1;
+  else if (!strcmp(p,"-regsymredef"))
+    regsymredef = 1;
   else if (!strcmp(p,"-elfregs"))
     elfregs = 1;
   else if (!strcmp(p,"-guess-ext"))
@@ -4823,14 +4832,6 @@ int cpu_args(char *arg)
     return 0;
 
   return 1;
-}
-
-
-static char *skipline(char *s)
-{
-  while (*s!='\0')
-    s++;
-  return s;
 }
 
 
@@ -4879,11 +4880,7 @@ int set_default_qualifiers(char **q,int *q_len)
 
 static char validchar(char *s)
 {
-  char c = *s;
-
-  if (c!='\0' && c!=commentchar)
-    return c;
-  return 0;
+  return ISEOL(s) ? 0 : *s;
 }
 
 
@@ -4947,7 +4944,7 @@ static void phxass_option(char opt)
       opt_quick = opt_lquick = 1;
       break;
     case 'B':  /* branches */
-      opt_bra = opt_brajmp = 1;
+      opt_bra = opt_brajmp = opt_allbra = 1;
       break;
     case 'L':  /* logical shifts */
       opt_lsl = 1;
@@ -4965,7 +4962,6 @@ static void phxass_option(char opt)
       opt_gen = 1;
       break;
   }
-  opt_allbra = 1;
 }
 
 
@@ -5200,13 +5196,13 @@ char *parse_cpu_special(char *start)
       }
       else if (*name!='.' && !strnicmp(s,"code",4)) {
         add_cpu_opt(0,OCMD_SMALLCODE,1);
-        return skipline(s);
+        return skip_line(s);
       }
       else
         sdreg = last_sdreg;
       add_cpu_opt(0,OCMD_SDREG,sdreg);
       /* skip rest of line to be compatible to other assemblers */
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==3 && !strnicmp(name,"far",3)) {
@@ -5218,7 +5214,7 @@ char *parse_cpu_special(char *start)
       }
       add_cpu_opt(0,OCMD_SMALLCODE,0);
       eol(s);
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==8 && !strnicmp(name,"initnear",8)) {
@@ -5236,7 +5232,7 @@ char *parse_cpu_special(char *start)
       }
       else
         cpu_error(59);  /* small data mode is not enabled */
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==7 && !strnicmp(name,"basereg",7)) {
@@ -5265,7 +5261,7 @@ char *parse_cpu_special(char *start)
         else
           cpu_error(15,',');  /* , expected */
       }
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==4 && !strnicmp(name,"endb",4)) {
@@ -5296,7 +5292,7 @@ char *parse_cpu_special(char *start)
       }
       else
         cpu_error(4);  /* address register required */
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==7 && !strnicmp(name,"machine",7)) {
@@ -5310,7 +5306,7 @@ char *parse_cpu_special(char *start)
       }
       else
         cpu_error(43);  /* unknown cpu type */
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if ((s-name)>=5 && (s-name)<=8 && !strnicmp(name,"mcf",3)) {
@@ -5322,7 +5318,7 @@ char *parse_cpu_special(char *start)
       }
       else
         cpu_error(43);  /* unknown cpu type */
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==7 && !strnicmp(name,"mc",2)) {
@@ -5334,14 +5330,14 @@ char *parse_cpu_special(char *start)
       }
       else
         cpu_error(43);  /* unknown cpu type */
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==5 && !strnicmp(name,"cpu32",5)) {
       /* CPU32 */
       set_cpu_type(cpu32,1);
       eol(s);
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==3 && !strnicmp(name,"fpu",3)) {
@@ -5360,7 +5356,7 @@ char *parse_cpu_special(char *start)
         cpu_type &= ~(m68881|m68882);
       add_cpu_opt(0,OCMD_CPU,cpu_type);
       eol(s);
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (s-name==3 && !strnicmp(name,"opt",3)) {
@@ -5383,7 +5379,7 @@ char *parse_cpu_special(char *start)
         }
         while (*s2++ == ',');  /* another option? */
       }
-      return skipline(s);
+      return skip_line(s);
     }
 
     else if (phxass_compat && s-name==4 && !strnicmp(name,"optc",4)) {
@@ -5396,7 +5392,7 @@ char *parse_cpu_special(char *start)
         optc = parse_constexpr(&s);
       phxass_optc((uint16_t)optc);
       cpu_opts_optinit(NULL);  /* now create new opt atoms */
-      return skipline(s);
+      return skip_line(s);
     }
   }
   return start;
@@ -5422,13 +5418,14 @@ int parse_cpu_label(char *labname,char **start)
 
       s = skip(s);
       if ((r = getreg(&s,0,0)) >= 0)
-        new_regsym(0,labname,REGisAn(r)?RSTYPE_An:RSTYPE_Dn,0,REGget(r));
+        new_regsym(regsymredef,0,labname,
+                   REGisAn(r)?RSTYPE_An:RSTYPE_Dn,0,REGget(r));
       else if ((r = getfreg(&s)) >= 0)
-        new_regsym(0,labname,RSTYPE_FPn,0,r);
+        new_regsym(regsymredef,0,labname,RSTYPE_FPn,0,r);
       else
         cpu_error(44);  /* register expected */
       eol(s);
-      *start = skipline(s);
+      *start = skip_line(s);
       return 1;
     }
 
@@ -5436,9 +5433,9 @@ int parse_cpu_label(char *labname,char **start)
              (s-dir==5 && !strnicmp(dir,"equrl",5))) {
       /* label REG reglist */
       s = skip(s);
-      new_abs(labname,number_expr((taddr)scan_Rnlist(&s)));
+      new_equate(labname,number_expr((taddr)scan_Rnlist(&s)));
       eol(s);
-      *start = skipline(s);
+      *start = skip_line(s);
       return 1;
     }
 
@@ -5446,9 +5443,9 @@ int parse_cpu_label(char *labname,char **start)
              (s-dir==6 && !strnicmp(dir,"fequrl",6))) {
       /* label FREG reglist */
       s = skip(s);
-      new_abs(labname,number_expr((taddr)scan_FPnlist(&s)));
+      new_equate(labname,number_expr((taddr)scan_FPnlist(&s)));
       eol(s);
-      *start = skipline(s);
+      *start = skip_line(s);
       return 1;
     }
   }

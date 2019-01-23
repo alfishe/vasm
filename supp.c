@@ -1,5 +1,5 @@
 /* supp.c miscellaneous support routines */
-/* (c) in 2008-2010 by Frank Wille */
+/* (c) in 2008-2015 by Frank Wille */
 
 #include "vasm.h"
 #include "supp.h"
@@ -53,14 +53,15 @@ void *mymalloc(size_t sz)
 {
   size_t *p;
 
+  /* workaround for Electric Fence on 64-bit RISC */
+  if (sz)
+    sz = (sz + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);
+
   if (debug) {
     if (sz == 0) {
       printf("Warning! Allocating 0 bytes. Adjusted to 1 byte.\n");
       sz = 1;
     }
-    /* workaround for Electric Fence on 64-bit RISC */
-    sz = (sz + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);
-
     p = malloc(sz+2*sizeof(size_t));
     if (!p)
       general_error(17);
@@ -355,6 +356,19 @@ void fw8(FILE *f,uint8_t x)
 }
 
 
+void fw16(FILE *f,uint16_t x,int be)
+{
+  if (be) {
+    fw8(f,(x>>8) & 0xff);
+    fw8(f,x & 0xff);
+  }
+  else {
+    fw8(f,x & 0xff);
+    fw8(f,(x>>8) & 0xff);
+  }
+}
+
+
 void fw32(FILE *f,uint32_t x,int be)
 {
   if (be) {
@@ -427,7 +441,8 @@ taddr fwpcalign(FILE *f,atom *a,section *sec,taddr pc)
   while (n % patlen) {
     if (!align_warning) {
       align_warning = 1;
-      general_error(62,(unsigned long)n,(unsigned long)patlen);
+      /*output_error(9,sec->name,(unsigned long)n,(unsigned long)patlen,
+                   ULLTADDR(pc));*/
     }
     fw8(f,0);
     n--;
@@ -443,7 +458,8 @@ taddr fwpcalign(FILE *f,atom *a,section *sec,taddr pc)
   while (n--) {
     if (!align_warning) {
       align_warning = 1;
-      general_error(62,(unsigned long)n,(unsigned long)patlen);
+      /*output_error(9,sec->name,(unsigned long)n,(unsigned long)patlen,
+                   ULLTADDR(pc));*/
     }
     fw8(f,0);
   }
@@ -572,7 +588,7 @@ char *strtolower(char *s)
 taddr balign(taddr addr,taddr a)
 /* return number of bytes required to achieve alignment */
 {
-  return (((addr+a-1)&~(a-1)) - addr);
+  return a ? (((addr+a-1)&~(a-1)) - addr) : 0;
 }
 
 

@@ -1,6 +1,6 @@
 /*
 ** cpu.c ARM cpu-description file
-** (c) in 2004,2006,2010,2011,2014 by Frank Wille
+** (c) in 2004,2006,2010,2011,2014-2015 by Frank Wille
 */
 
 #include "vasm.h"
@@ -10,7 +10,7 @@ mnemonic mnemonics[] = {
 };
 int mnemonic_cnt = sizeof(mnemonics)/sizeof(mnemonics[0]);
 
-char *cpu_copyright = "vasm ARM cpu backend 0.4 (c) 2004,2006,2010,2011,2014 Frank Wille";
+char *cpu_copyright = "vasm ARM cpu backend 0.4a (c) 2004,2006,2010,2011,2014-2015 Frank Wille";
 char *cpuname = "ARM";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -1592,7 +1592,7 @@ dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
       if (base)
         add_nreloc(&db->relocs,base,val,
                    btype==BASE_PCREL?REL_PC:REL_ABS,bitsize,0);
-      else
+      else if (btype != BASE_NONE)
         general_error(38);  /* illegal relocation */
     }
     switch (db->size) {
@@ -1634,30 +1634,30 @@ int init_cpu()
   /* define register symbols */
   for (i=0; i<16; i++) {
     sprintf(r,"r%d",i);
-    new_regsym(1,r,0,0,i);
+    new_regsym(0,1,r,0,0,i);
     sprintf(r,"c%d",i);
-    new_regsym(1,r,0,0,i);
+    new_regsym(0,1,r,0,0,i);
     sprintf(r,"p%d",i);
-    new_regsym(1,r,0,0,i);
+    new_regsym(0,1,r,0,0,i);
   }
   /* ATPCS synonyms */
   for (i=0; i<8; i++) {
     if (i < 4) {
       sprintf(r,"a%d",i+1);
-      new_regsym(1,r,0,0,i);
+      new_regsym(0,1,r,0,0,i);
     }
     sprintf(r,"v%d",i+1);
-    new_regsym(1,r,0,0,i+4);
+    new_regsym(0,1,r,0,0,i+4);
   }
   /* well known aliases */
-  new_regsym(1,"wr",0,0,7);
-  new_regsym(1,"sb",0,0,9);
-  new_regsym(1,"sl",0,0,10);
-  new_regsym(1,"fp",0,0,11);
-  new_regsym(1,"ip",0,0,12);
-  new_regsym(1,"sp",0,0,13);
-  new_regsym(1,"lr",0,0,14);
-  new_regsym(1,"pc",0,0,15);
+  new_regsym(0,1,"wr",0,0,7);
+  new_regsym(0,1,"sb",0,0,9);
+  new_regsym(0,1,"sl",0,0,10);
+  new_regsym(0,1,"fp",0,0,11);
+  new_regsym(0,1,"ip",0,0,12);
+  new_regsym(0,1,"sp",0,0,13);
+  new_regsym(0,1,"lr",0,0,14);
+  new_regsym(0,1,"pc",0,0,15);
 
   return 1;
 }

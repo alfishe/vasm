@@ -164,6 +164,7 @@ The following CPU modules can be selected:
 @item @code{CPU=m68k}
 @item @code{CPU=ppc}
 @item @code{CPU=test}
+@item @code{CPU=tr3200}
 @item @code{CPU=vidcore}
 @item @code{CPU=x86}
 @item @code{CPU=z80}
@@ -173,6 +174,7 @@ The following syntax modules can be selected:
 @itemize
 @item @code{SYNTAX=std}
 @item @code{SYNTAX=mot}
+@item @code{SYNTAX=madmac}
 @item @code{SYNTAX=oldstyle}
 @item @code{SYNTAX=test}
 @end itemize
@@ -219,6 +221,10 @@ was included or called.
 @item size_t size;
         Size of the source text to assemble in bytes.
 
+@item macro *macro;
+        Pointer to macro structure, when currently inside a macro
+        (see also @code{num_params}).
+
 @item unsigned long repeat;
         Number of repetitions of this source text. Usually this is 1, but
         for text blocks between a @code{rept} and @code{endr} directive
@@ -226,10 +232,9 @@ was included or called.
         the end of this source text block is reached.
 
 @item int cond_level;
-        Current level of conditional nesting while calling this macro.
-        The level is provided by the syntax module through
-         @code{execute_macro()}. The syntax module may use this information
-        to restore the last valid level when exiting a macro in the middle.
+        Current level of conditional nesting while entering this source
+        text. It is automatically restored to the previous level when
+        leaving the source prematurely through @code{end_source()}.
 
 @item int num_params;
         Number of macro parameters passed at the invocation point from
@@ -237,11 +242,20 @@ was included or called.
         For macros 0 (no parameters) or higher.
 
 @item char *param[MAXMACPARAMS];
-        Pointer to the macro parameters. Parameter 0 is usually reserved
-        for a special purpose, like the mnemonic's first qualifier.
+        Pointer to the macro parameters.
 
 @item int param_len[MAXMACPARAMS];
         Number of characters per macro parameter.
+
+@item int num_quals;
+        (If @code{MAX_QUALIFIERS!=0}.) Number of qualifiers for a macro.
+        when not passed on invocation these are the default qualifiers.
+
+@item char *qual[MAX_QUALIFIERS];
+        (If @code{MAX_QUALIFIERS!=0}.) Pointer to macro qualifiers.
+
+@item int qual_len[MAX_QUALIFIERS];
+        (If @code{MAX_QUALIFIERS!=0}.) Number of characters per macro qualifier.
 
 @item unsigned long id;
         Every source has its unique id. Useful for macros supporting
@@ -476,7 +490,7 @@ typedef struct atom @{
     void *opts;
     int srcline;
     char *ptext;
-    expr *pexpr;
+    printexpr *pexpr;
     expr *roffs;
     taddr *rorg;
     assertion *assert;
@@ -663,9 +677,23 @@ case of a @code{LINE}-atom.
 (In union @code{content}.) A string to print to stdout in case of a
 @code{PRINTTEXT}-atom.
 
-@item    expr *pexpr;
-(In union @code{content}.) An expression to evaluate and print to stdout in
-case of a @code{PRINTEXPR}-atom.
+@item    printexpr *pexpr;
+(In union @code{content}.) Pointer to a printexpr structure in the case of
+a @code{PRINTEXPR}-atom. Contains the following elements:
+@table @code
+@item expr *print_exp;
+Pointer to an expression to evaluate and print.
+
+@item short type;
+Format type of the printed value. We can print as hexadecimal
+(@code{PEXP_HEX}), signed decimal (@code{PEXP_SDEC}),
+unsigned decimal (@code{PEXP_UDEC}), binary (@code{PEXP_BIN}) OR
+ASCII (@code{PEXP_ASC}).
+
+@item short size;
+Size (precision) of the printed value in bits. Excessive bits will be
+masked out, and sign-extended when requested.
+@end table
 
 @item    expr *roffs;
 (In union @code{content}.) The expression holds the relative section offset
@@ -808,11 +836,19 @@ valid character to start an identifier or a valid character inside an
 identifier, respectively.
 @code{ISIDCHAR} must be a superset of @code{ISIDSTART}.
 
+@item #define ISEOL(x)
+This macro returns true when the string pointing at @code{x} is either
+a comment character or end-of-line.
+
 @item #define CHKIDEND(s,e) chkidend((s),(e))
 Defines an optional function to be called at the end of the identifier
 recognition process. It allows you to adjust the length of the identifier
 by returning a modified @code{e}. Default is to return @code{e}. The
 function is defined as @code{char *chkidend(char *startpos,char *endpos)}.
+
+@item #define BOOLEAN(x) -(x)
+Defines the result of boolean operations. Usually this is @code{(x)}, as
+in C, or @code{-(x)} to return -1 for True.
 
 @item #define NARGSYM "NARG"
 Defines the name of an optional symbol which contains the number of
@@ -836,6 +872,52 @@ function is defined as @code{char *exp_skip(char *stream)}.
 Should be defined when the syntax module wants to ignore the operand field
 on instructions without an operand. Useful, when everything following
 an operand should be regarded as comment, without a comment character.
+
+@item #define MAXMACPARAMS 35
+Optionally defines the maximum number of macro arguments, if you need more than
+the default number of 9.
+
+@item #define SKIP_MACRO_ARGNAME(p) skip_identifier(p)
+An optional function to skip a named macro argument in the macro
+definition.
+Argument is the current source stream pointer.
+The default is to skip an identifier.
+
+@item #define MACRO_ARG_OPTS(m,n,a,p) NULL
+An optional function to parse and skip options, default values and
+qualifiers for each macro argument. Returns @code{NULL} when no argument
+options have been found.
+Arguments are:
+  @table @code
+    @item struct macro *m;
+      Pointer to the macro structure being currently defined.
+    @item int n;
+      Argument index, starting with zero.
+    @item char *a;
+      Name of this argument.
+    @item char *p;
+      Current source stream pointer. An updated pointer will be returned.
+  @end table
+Defaults to unused.
+
+@item #define MACRO_ARG_SEP(p) (*p==',' ? skip(p+1) : NULL)
+An optional function to skip a separator between the macro argument
+names in the macro definition. Returns NULL when no valid separator is
+found.
+Argument is the current source stream pointer.
+Defaults to using comma as the only valid separator.
+
+@item #define MACRO_PARAM_SEP(p) (*p==',' ? skip(p+1) : NULL)
+An optional function to skip a separator between the macro parameters
+in a macro call. Returns NULL when no valid separator is found.
+Argument is the current source stream pointer.
+Defaults to using comma as the only valid separator.
+
+@item #define EXEC_MACRO(s)
+An optional function to be called just before a macro starts execution.
+Parameters and qualifiers are already parsed.
+Argument is the @code{source} pointer of the new macro.
+Defaults to unused.
 
 @end table
 
@@ -906,6 +988,24 @@ the @code{read_next_line()} function, parse them and create sections,
 atoms and symbols. Pseudo directives are usually handled by the syntax 
 module. Instructions can be parsed by the cpu module using
 @code{parse_instruction()}.
+
+@item char *parse_macro_arg(struct macro *,char *,struct namelen *,struct namelen *);
+Called to parse a macro parameter by using the source stream pointer in
+the second argument. The start pointer and length of a single passed
+parameter is written to the first @code{struct namelen}, while the optionally
+selected named macro argument is passed in the second @code{struct namelen}.
+When the @code{len} field of the second @code{namelen} is zero, then the
+argument is selected by position instead by name. Returns the updated
+source stream pointer after successful parsing.
+
+@item int expand_macro(source *,char **,char *,int);
+Expand parameters and special commands inside a macro source. The second
+argument is a pointer to the current source stream pointer, which is
+updated on any succesful expansion. The function will return the
+number of characters written to the destination buffer (third argument)
+in this case. Returning @code{-1} means: no expansion took place.
+The last argument defines the space in characters which is left in the
+destination buffer.
 
 @item char *get_local_label(char **);
 Gets a pointer to the current source pointer. Has to check if a valid

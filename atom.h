@@ -54,6 +54,17 @@ struct sblock {
   taddr maxalignbytes;
 };
 
+typedef struct printexpr {
+  expr *print_exp;
+  short type;  /* hex, signed, unsigned */
+  short size;  /* precision in bits */
+} printexpr;
+#define PEXP_HEX 0
+#define PEXP_SDEC 1
+#define PEXP_UDEC 2
+#define PEXP_BIN 3
+#define PEXP_ASC 4
+
 typedef struct assertion {
   expr *assert_exp;
   char *expstr;
@@ -79,7 +90,7 @@ typedef struct atom {
     void *opts;
     int srcline;
     char *ptext;
-    expr *pexpr;
+    printexpr *pexpr;
     expr *roffs;
     taddr *rorg;
     assertion *assert;
@@ -95,6 +106,7 @@ sblock *new_sblock(expr *,size_t,expr *);
 void add_atom(section *,atom *);
 size_t atom_size(atom *,section *,taddr);
 void print_atom(FILE *,atom *);
+void atom_printexpr(printexpr *,section *,taddr);
 atom *clone_atom(atom *);
 
 atom *new_inst_atom(instruction *);
@@ -105,7 +117,7 @@ atom *new_datadef_atom(size_t,operand *);
 atom *new_srcline_atom(int);
 atom *new_opts_atom(void *);
 atom *new_text_atom(char *);
-atom *new_expr_atom(expr *);
+atom *new_expr_atom(expr *,int,int);
 atom *new_roffs_atom(expr *);
 atom *new_rorg_atom(taddr);
 atom *new_rorgend_atom(void);

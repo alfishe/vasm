@@ -1,5 +1,5 @@
 /* expr.h expression handling for vasm */
-/* (c) in 2002-2014 by Volker Barthelmann */
+/* (c) in 2002-2015 by Volker Barthelmann and Frank Wille */
 
 #include "hugeint.h"
 
@@ -60,3 +60,4 @@ int find_base(expr *,symbol **,section *,taddr);
 #define BASE_ILLEGAL 0
 #define BASE_OK 1
 #define BASE_PCREL 2
+#define BASE_NONE -1  /* no base-symbol assigned, all labels are absolute */

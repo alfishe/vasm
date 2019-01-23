@@ -309,7 +309,7 @@ static void insert_macreg(unsigned char *d,struct oper_insert *i,operand *o)
     *(d+3) |= i->size;  /* size holds the U/L mask for this register */
 }
 
-static void insert_div(unsigned char *d,struct oper_insert *i,operand *o)
+static void insert_muldivl(unsigned char *d,struct oper_insert *i,operand *o)
 {
   *(d+2) |= (o->reg & 7) << 4;
   *(d+3) |= o->reg & 7;
@@ -358,7 +358,7 @@ static void insert_accx_rev(unsigned char *d,struct oper_insert *i,operand *o)
 /* place to put an operand */
 enum {
   NOP=0,NEA,SEA,MEA,BEA,KEA,REA,EAM,BRA,DBR,RHI,RLO,RL4,R2H,R2M,R2L,R2P,
-  FPN,FPM,FMD,C2H,CS1,CS2,CS3,DV1,DV2,TBL,FPS,FPC,RMM,RMW,RMY,RMX,ACX,ACR,
+  FPN,FPM,FMD,C2H,CS1,CS2,CS3,MDL,DVL,TBL,FPS,FPC,RMM,RMW,RMY,RMX,ACX,ACR,
   DL8,DL4,D3Q,DL3,CAC,CTR,D16,D2R,EL8,E8R,EL3,EL4,EM3,EM4,EH3,BAX,
   FCR,F13,M3Q,MSF,ACW,AHI,ALO,LIN
 };
@@ -436,10 +436,10 @@ struct oper_insert insert_info[] = {
 /* CS3 register 4 bits for CAS2 (CAS2) bits 15-12 */
   M_func,4,16,0,insert_cas2,
 
-/* DV1 insert 3 bit reg. Dq into 2nd word bits 14-12/2-0 */
-  M_func,0,0,0,insert_div,
+/* MDL insert 3 bit reg. Dq/Dl into 2nd word bits 14-12/2-0 */
+  M_func,0,0,0,insert_muldivl,
 
-/* DV2 bit Dq to 2nd word bits 14-12, Dr to bits 2-0 */
+/* DVL bit Dq to 2nd word bits 14-12, Dr to bits 2-0 */
   M_func,0,0,0,insert_divl,
 
 /* TBL 3 bit Dym to 1st w. bits 2-0, Dyn to 2nd w. 2-0 */

@@ -1,5 +1,5 @@
 /* expr.c expression handling for vasm */
-/* (c) in 2002-2014 by Volker Barthelmann */
+/* (c) in 2002-2015 by Volker Barthelmann and Frank Wille */
 
 #include "vasm.h"
 
@@ -648,10 +648,10 @@ void simplify_expr(expr *tree)
       ival=(~tree->left->c.val);
       break;
     case LAND:
-      ival=-(tree->left->c.val&&tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val&&tree->right->c.val);
       break;
     case LOR:
-      ival=-(tree->left->c.val||tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val||tree->right->c.val);
       break;
     case BAND:
       ival=(tree->left->c.val&tree->right->c.val);
@@ -675,22 +675,22 @@ void simplify_expr(expr *tree)
       ival=((utaddr)tree->left->c.val>>tree->right->c.val);
       break;
     case LT:
-      ival=-(tree->left->c.val<tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val<tree->right->c.val);
       break;
     case GT:
-      ival=-(tree->left->c.val>tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val>tree->right->c.val);
       break;
     case LEQ:
-      ival=-(tree->left->c.val<=tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val<=tree->right->c.val);
       break;
     case GEQ:
-      ival=-(tree->left->c.val>=tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val>=tree->right->c.val);
       break;
     case NEQ:
-      ival=-(tree->left->c.val!=tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val!=tree->right->c.val);
       break;
     case EQ:
-      ival=-(tree->left->c.val==tree->right->c.val);
+      ival=BOOLEAN(tree->left->c.val==tree->right->c.val);
       break;
     default:
 #ifdef EXT_UNARY_EVAL
@@ -745,11 +745,11 @@ void simplify_expr(expr *tree)
       hval=hcpl(lval);
       break;
     case LAND:
-      ival=-(hcmp(lval,huge_zero())!=0&&hcmp(rval,huge_zero())!=0);
+      ival=BOOLEAN(hcmp(lval,huge_zero())!=0&&hcmp(rval,huge_zero())!=0);
       type=NUM;
       break;
     case LOR:
-      ival=-(hcmp(lval,huge_zero())!=0||hcmp(rval,huge_zero())!=0);
+      ival=BOOLEAN(hcmp(lval,huge_zero())!=0||hcmp(rval,huge_zero())!=0);
       type=NUM;
       break;
     case BAND:
@@ -774,27 +774,27 @@ void simplify_expr(expr *tree)
       hval=hshr(lval,huge_to_int(rval));
       break;
     case LT:
-      ival=-(hcmp(lval,rval)<0);
+      ival=BOOLEAN(hcmp(lval,rval)<0);
       type=NUM;
       break;
     case GT:
-      ival=-(hcmp(lval,rval)>0);
+      ival=BOOLEAN(hcmp(lval,rval)>0);
       type=NUM;
       break;
     case LEQ:
-      ival=-(hcmp(lval,rval)<=0);
+      ival=BOOLEAN(hcmp(lval,rval)<=0);
       type=NUM;
       break;
     case GEQ:
-      ival=-(hcmp(lval,rval)>=0);
+      ival=BOOLEAN(hcmp(lval,rval)>=0);
       type=NUM;
       break;
     case NEQ:
-      ival=-(hcmp(lval,rval)!=0);
+      ival=BOOLEAN(hcmp(lval,rval)!=0);
       type=NUM;
       break;
     case EQ:
-      ival=-(hcmp(lval,rval)==0);
+      ival=BOOLEAN(hcmp(lval,rval)==0);
       type=NUM;
       break;
     default:
@@ -838,27 +838,27 @@ void simplify_expr(expr *tree)
       fval=(-lval);
       break;
     case LT:
-      ival=-(lval<rval);
+      ival=BOOLEAN(lval<rval);
       type=NUM;
       break;
     case GT:
-      ival=-(lval>rval);
+      ival=BOOLEAN(lval>rval);
       type=NUM;
       break;
     case LEQ:
-      ival=-(lval<=rval);
+      ival=BOOLEAN(lval<=rval);
       type=NUM;
       break;
     case GEQ:
-      ival=-(lval>=rval);
+      ival=BOOLEAN(lval>=rval);
       type=NUM;
       break;
     case NEQ:
-      ival=-(lval!=rval);
+      ival=BOOLEAN(lval!=rval);
       type=NUM;
       break;
     case EQ:
-      ival=-(lval==rval);
+      ival=BOOLEAN(lval==rval);
       type=NUM;
       break;
     default:
@@ -929,7 +929,7 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
         /* Difference between symbols from different section or between an
            external symbol and a symbol from the current section can be
            represented by a REL_PC, so we calculate the addend. */
-        if((sec->flags&ABSOLUTE)&&lsym->sec!=NULL&&(lsym->sec->flags&ABSOLUTE))
+        if((rsym->flags&ABSLABEL)&&(lsym->flags&ABSLABEL))
           cnst=1;  /* constant, when labels are from two ORG sections */
         else{
           /* prepare a value which works with REL_PC */
@@ -964,10 +964,10 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
     val=(~lval);
     break;
   case LAND:
-    val=-(lval&&rval);
+    val=BOOLEAN(lval&&rval);
     break;
   case LOR:
-    val=-(lval||rval);
+    val=BOOLEAN(lval||rval);
     break;
   case BAND:
     val=(lval&rval);
@@ -991,22 +991,22 @@ int eval_expr(expr *tree,taddr *result,section *sec,taddr pc)
     val=((utaddr)lval>>rval);
     break;
   case LT:
-    val=-(lval<rval);
+    val=BOOLEAN(lval<rval);
     break;
   case GT:
-    val=-(lval>rval);
+    val=BOOLEAN(lval>rval);
     break;
   case LEQ:
-    val=-(lval<=rval);
+    val=BOOLEAN(lval<=rval);
     break;
   case GEQ:
-    val=-(lval>=rval);
+    val=BOOLEAN(lval>=rval);
     break;
   case NEQ:
-    val=-(lval!=rval);
+    val=BOOLEAN(lval!=rval);
     break;
   case EQ:
-    val=-(lval==rval);
+    val=BOOLEAN(lval==rval);
     break;
   case SYM:
     if(tree->c.sym->type==EXPRESSION){
@@ -1093,11 +1093,11 @@ int eval_expr_huge(expr *tree,thuge *result)
     val=hcpl(lval);
     break;
   case LAND:
-    val=huge_from_int(-(hcmp(lval,huge_zero())!=0
+    val=huge_from_int(BOOLEAN(hcmp(lval,huge_zero())!=0
                       &&hcmp(rval,huge_zero())!=0));
     break;
   case LOR:
-    val=huge_from_int(-(hcmp(lval,huge_zero())!=0
+    val=huge_from_int(BOOLEAN(hcmp(lval,huge_zero())!=0
                       ||hcmp(rval,huge_zero())!=0));
     break;
   case BAND:
@@ -1122,22 +1122,22 @@ int eval_expr_huge(expr *tree,thuge *result)
     val=hshr(lval,huge_to_int(rval));
     break;
   case LT:
-    val=huge_from_int(-(hcmp(lval,rval)<0));
+    val=huge_from_int(BOOLEAN(hcmp(lval,rval)<0));
     break;
   case GT:
-    val=huge_from_int(-(hcmp(lval,rval)>0));
+    val=huge_from_int(BOOLEAN(hcmp(lval,rval)>0));
     break;
   case LEQ:
-    val=huge_from_int(-(hcmp(lval,rval)<=0));
+    val=huge_from_int(BOOLEAN(hcmp(lval,rval)<=0));
     break;
   case GEQ:
-    val=huge_from_int(-(hcmp(lval,rval)>=0));
+    val=huge_from_int(BOOLEAN(hcmp(lval,rval)>=0));
     break;
   case NEQ:
-    val=huge_from_int(-(hcmp(lval,rval)!=0));
+    val=huge_from_int(BOOLEAN(hcmp(lval,rval)!=0));
     break;
   case EQ:
-    val=huge_from_int(-(hcmp(lval,rval)==0));
+    val=huge_from_int(BOOLEAN(hcmp(lval,rval)==0));
     break;
   case SYM:
     if(tree->c.sym->type==EXPRESSION){
@@ -1207,22 +1207,22 @@ int eval_expr_float(expr *tree,tfloat *result)
     val=(-lval);
     break;
   case LT:
-    val=-(lval<rval);
+    val=BOOLEAN(lval<rval);
     break;
   case GT:
-    val=-(lval>rval);
+    val=BOOLEAN(lval>rval);
     break;
   case LEQ:
-    val=-(lval<=rval);
+    val=BOOLEAN(lval<=rval);
     break;
   case GEQ:
-    val=-(lval>=rval);
+    val=BOOLEAN(lval>=rval);
     break;
   case NEQ:
-    val=-(lval!=rval);
+    val=BOOLEAN(lval!=rval);
     break;
   case EQ:
-    val=-(lval==rval);
+    val=BOOLEAN(lval==rval);
     break;
   case SYM:
     if(tree->c.sym->type==EXPRESSION){
@@ -1280,7 +1280,7 @@ static int find_abs_base(expr *tree,symbol **base)
       tree->c.sym->flags&=~INEVAL;
       return ok;
     }else if(LOCREF(tree->c.sym)){
-      if(tree->c.sym->sec!=NULL&&(tree->c.sym->sec->flags&ABSOLUTE)){
+      if(tree->c.sym->flags&ABSLABEL){
         *base=tree->c.sym;
         return 1;
       }
@@ -1299,8 +1299,10 @@ static int find_abs_base(expr *tree,symbol **base)
     symbol *tstbase=NULL;
     if(!find_abs_base(tree->right,&tstbase))
       return 0;
-    if(tstbase!=NULL)
-      return 0;
+    if(tstbase!=NULL){
+      *base=NULL;
+      return 1;
+    }
   }else{
     if(!find_abs_base(tree->right,base))
       return 0;
@@ -1363,6 +1365,7 @@ int find_base(expr *p,symbol **base,section *sec,taddr pc)
         /* a base label from an absolute ORG section */
       if(*base!=NULL)
         return EXTREF(*base)?BASE_ILLEGAL:BASE_OK;
+      return BASE_NONE;
     }
   }
   return _find_base(p,base,sec,pc);

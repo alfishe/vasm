@@ -2,7 +2,7 @@ PRE = obj$(TARGET)/$(CPU)_$(SYNTAX)_
 
 OBJS = $(PRE)vasm.o $(PRE)atom.o $(PRE)expr.o $(PRE)symtab.o $(PRE)symbol.o \
        $(PRE)error.o $(PRE)parse.o $(PRE)reloc.o $(PRE)hugeint.o \
-       $(PRE)supp.o $(PRE)cpu.o $(PRE)syntax.o \
+       $(PRE)cond.o $(PRE)supp.o $(PRE)cpu.o $(PRE)syntax.o \
        $(PRE)output_test.o $(PRE)output_elf.o $(PRE)output_bin.o \
        $(PRE)output_vobj.o $(PRE)output_hunk.o $(PRE)output_aout.o \
        $(PRE)output_tos.o
@@ -39,6 +39,9 @@ $(PRE)atom.o: atom.c vasm.h symbol.h expr.h error.h supp.h reloc.h cpus/$(CPU)/c
 $(PRE)expr.o: expr.c vasm.h symbol.h expr.h error.h supp.h syntax/$(SYNTAX)/syntax.h hugeint.h tfloat.h
 	$(CC) $(INCLUDES) $(COPTS) expr.c $(CCOUT)$(PRE)expr.o
 
+$(PRE)cond.o: cond.c vasm.h error.h cond.h syntax/$(SYNTAX)/syntax.h
+	$(CC) $(INCLUDES) $(COPTS) cond.c $(CCOUT)$(PRE)cond.o
+
 $(PRE)symtab.o: symtab.c vasm.h error.h supp.h
 	$(CC) $(INCLUDES) $(COPTS) symtab.c $(CCOUT)$(PRE)symtab.o
 
@@ -63,7 +66,10 @@ $(PRE)supp.o: supp.c vasm.h symbol.h expr.h error.h supp.h atom.h tfloat.h
 $(PRE)output_test.o: output_test.c vasm.h symbol.h error.h supp.h atom.h
 	$(CC) $(INCLUDES) $(COPTS) output_test.c $(CCOUT)$(PRE)output_test.o
 
-$(PRE)output_elf.o: output_elf.c vasm.h symbol.h error.h supp.h atom.h output_elf.h elf_reloc_ppc.h elf_reloc_68k.h
+$(PRE)output_elf.o: output_elf.c vasm.h symbol.h error.h supp.h atom.h \
+                    output_elf.h elf_reloc_ppc.h elf_reloc_68k.h \
+                    elf_reloc_386.h elf_reloc_arm.h elf_reloc_x86_64.h \
+                    elf_reloc_jag.h
 	$(CC) $(INCLUDES) $(COPTS) output_elf.c $(CCOUT)$(PRE)output_elf.o
 
 $(PRE)output_bin.o: output_bin.c vasm.h symbol.h error.h supp.h atom.h

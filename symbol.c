@@ -1,5 +1,5 @@
 /* symbol.c - manage all kinds of symbols */
-/* (c) in 2014 by Volker Barthelmann and Frank Wille */
+/* (c) in 2014-2015 by Volker Barthelmann and Frank Wille */
 
 #include "vasm.h"
 
@@ -50,6 +50,8 @@ void print_symbol(FILE *f,symbol *p)
     fprintf(f,"COMMON ");
   if (p->flags&WEAK)
     fprintf(f,"WEAK ");
+  if (p->flags&ABSLABEL)
+    fprintf(f,"ABS ");
   if (TYPE(p))
     print_type(f,p);
   if (p->size){
@@ -61,6 +63,18 @@ void print_symbol(FILE *f,symbol *p)
     fprintf(f,"align=%lu ",(unsigned long)p->align);
   if (p->sec)
     fprintf(f,"sec=%s ",p->sec->name);
+}
+
+
+char *get_bind_name(symbol *p)
+{
+  if (p->flags&EXPORT)
+    return "global";
+  else if (p->flags&WEAK)
+    return "weak";
+  else if (p->flags&LOCAL)
+    return "local";
+  return "unknown";
 }
 
 
@@ -133,6 +147,28 @@ void restore_symbols(void)
 }
 
 
+int check_symbol(char *name)
+/* issue an error when symbol is already defined in the current source */
+{
+  symbol *sym;
+
+  if (sym = find_symbol(name)) {
+    if (sym->type != IMPORT) {
+      general_error(67,name);  /* repeatedly defined symbol */
+      return 1;
+    }
+  }
+  return 0;
+}
+
+
+int is_local_label(char *name)
+/* returns true when name belong to a label with local scope */
+{
+  return *name == ' ';
+}
+
+
 char *make_local_label(char *glob,int glen,char *loc,int llen)
 /* construct a local label of the form:
    " " + global_label_name + " " + local_label_name */
@@ -163,8 +199,10 @@ symbol *new_abs(char *name,expr *tree)
   int add;
 
   if (new) {
+    if (new->flags&EQUATE)
+      general_error(67,name); /* repeatedly defined symbol (error) */
     if (new->type!=IMPORT && new->type!=EXPRESSION)
-      general_error(5,name);
+      general_error(5,name);  /* symbol redefined (warning) */
     add=0;
   }
   else {
@@ -184,6 +222,17 @@ symbol *new_abs(char *name,expr *tree)
     new->align = 0;
   }
   return new;
+}
+
+
+symbol *new_equate(char *name,expr *tree)
+{
+  symbol *sym;
+
+  check_symbol(name);
+  sym = new_abs(name,tree);
+  sym->flags |= EQUATE;  /* not allowed to change this absolute symbol */
+  return sym;
 }
 
 
@@ -254,8 +303,15 @@ symbol *new_labsym(section *sec,char *name)
     new->size = 0;
     new->align = 0;
   }
+
   if (*name != ' ')
     last_global_label = new->name;
+
+  if (sec->flags & ABSOLUTE)
+    new->flags |= ABSLABEL;
+  else
+    new->flags &= ~ABSLABEL;
+
   return new;
 }
 
@@ -331,28 +387,59 @@ regsym *find_regsym_nc(char *name,int len)
 }
 
 
-regsym *new_regsym(int no_case,char *name,int type,
+regsym *new_regsym(int redef,int no_case,char *name,int type,
                    unsigned int flags,unsigned int num)
 {
   int len = strlen(name);
   regsym *rsym;
 
   /* check if register symbol already exists */
-  if ((no_case!=0 && (rsym = find_regsym_nc(name,len))!=NULL) ||
-      (no_case==0 && (rsym = find_regsym(name,len))!=NULL)) {
+  rsym = no_case!=0 ? find_regsym_nc(name,len) : find_regsym(name,len);
+  if (rsym!=NULL && !redef) {
     general_error(58,name);  /* register symbol redefined */
     return rsym;
   }
 
-  rsym = mymalloc(sizeof(regsym));
-  rsym->reg_name = mystrdup(name);
-  rsym->reg_type = type;
-  rsym->reg_flags = flags;
-  rsym->reg_num = num;
-  add_regsym(rsym);
+  if (rsym == NULL) {
+    rsym = mymalloc(sizeof(regsym));
+    rsym->reg_name = mystrdup(name);
+    rsym->reg_type = type;
+    rsym->reg_flags = flags;
+    rsym->reg_num = num;
+    add_regsym(rsym);
+  }
+  else {
+    /* just update */
+    rsym->reg_type = type;
+    rsym->reg_flags = flags;
+    rsym->reg_num = num;
+  }
 
   return rsym;
 }
+
+
+/* remove an already defined register symbol from the hash table */
+int undef_regsym(char *name,int no_case,int type)
+{
+  regsym *rsym = no_case!=0 ?
+                 find_regsym_nc(name,strlen(name)) :
+                 find_regsym(name,strlen(name));
+
+  if (rsym != NULL) {
+    if (rsym->reg_type == type) {
+      rem_hashentry(regsymhash,name,no_case);
+      return 1;
+    }
+    else
+      general_error(70);  /* register symbol has wrong type */
+  }
+  else
+    general_error(69);  /* register does not exist */
+
+  return 0;
+}
+
 #endif /* HAVE_REGSYMS */
 
 

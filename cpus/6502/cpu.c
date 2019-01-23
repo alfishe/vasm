@@ -1,6 +1,6 @@
 /*
 ** cpu.c 650x/651x cpu-description file
-** (c) in 2002,2006,2008-2012,2014 by Frank Wille
+** (c) in 2002,2006,2008-2012,2014-2015 by Frank Wille
 */
 
 #include "vasm.h"
@@ -11,7 +11,7 @@ mnemonic mnemonics[] = {
 
 int mnemonic_cnt=sizeof(mnemonics)/sizeof(mnemonics[0]);
 
-char *cpu_copyright="vasm 6502 cpu backend 0.7 (c) 2002,2006,2008-2012,2014 Frank Wille";
+char *cpu_copyright="vasm 6502 cpu backend 0.7a (c) 2002,2006,2008-2012,2014-2015 Frank Wille";
 char *cpuname = "6502";
 int bitsperbyte = 8;
 int bytespertaddr = 2;
@@ -433,7 +433,7 @@ dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
           break;
       }
     }
-    else
+    else if (btype != BASE_NONE)
       general_error(38);  /* illegal relocation */
   }
   if (bitsize < 16) {

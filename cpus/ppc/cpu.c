@@ -1,6 +1,6 @@
 /*
 ** cpu.c PowerPC cpu-description file
-** (c) in 2002-2006,2008,2011,2013 by Frank Wille
+** (c) in 2002-2015 by Frank Wille
 */
 
 #include "vasm.h"
@@ -12,7 +12,7 @@ mnemonic mnemonics[] = {
 
 int mnemonic_cnt=sizeof(mnemonics)/sizeof(mnemonics[0]);
 
-char *cpu_copyright="vasm PowerPC cpu backend 1.6a (c) 2002-2006,2008,2011,2013 Frank Wille";
+char *cpu_copyright="vasm PowerPC cpu backend 1.7 (c) 2002-2015 Frank Wille";
 char *cpuname = "PowerPC";
 int bitsperbyte = 8;
 int bytespertaddr = 4;
@@ -37,9 +37,10 @@ int ppc_data_align(int n)
 
 int ppc_data_operand(int n)
 {
-  if (n<=8) return OP_D8;
-  if (n<=16) return OP_D16;
-  if (n<=32) return OP_D32;
+  if (n&OPSZ_FLOAT) return OPSZ_BITS(n)>32?OP_F64:OP_F32;
+  if (OPSZ_BITS(n)<=8) return OP_D8;
+  if (OPSZ_BITS(n)<=16) return OP_D16;
+  if (OPSZ_BITS(n)<=32) return OP_D32;
   return OP_D64;
 }
 
@@ -184,33 +185,33 @@ int parse_operand(char *p,int len,operand *op,int optype)
   op->basereg = NULL;
 
   p = skip(p);
-  op->value = parse_expr(&p);
+  op->value = OP_FLOAT(optype) ? parse_expr_float(&p) : parse_expr(&p);
 
-  if (optype < OP_D8) {
+  if (!OP_DATA(optype)) {
     p = parse_reloc_attr(p,op);
     p = skip(p);
-  }
 
-  if (optype < OP_D8 && p-start < len && *p=='(') {
-    /* parse d(Rn) load/store addressing mode */
-    if (powerpc_operands[optype].flags & OPER_PARENS) {
-      p++;
-      op->basereg = parse_expr(&p);
-      p = skip(p);
-      if (*p == ')') {
-        p = skip(p+1);
-        rc = PO_SKIP;
+    if (p-start < len && *p=='(') {
+      /* parse d(Rn) load/store addressing mode */
+      if (powerpc_operands[optype].flags & OPER_PARENS) {
+        p++;
+        op->basereg = parse_expr(&p);
+        p = skip(p);
+        if (*p == ')') {
+          p = skip(p+1);
+          rc = PO_SKIP;
+        }
+        else {
+          cpu_error(5);  /* missing closing parenthesis */
+          rc = PO_CORRUPT;
+          goto leave;
+        }
       }
       else {
-        cpu_error(5);  /* missing closing parenthesis */
+        cpu_error(4);  /* illegal operand type */
         rc = PO_CORRUPT;
         goto leave;
       }
-    }
-    else {
-      cpu_error(4);  /* illegal operand type */
-      rc = PO_CORRUPT;
-      goto leave;
     }
   }
 
@@ -266,7 +267,7 @@ static int get_reloc_type(operand *op)
 {
   int rtype = REL_NONE;
 
-  if (op->type >= OP_D8) {  /* data relocs */
+  if (OP_DATA(op->type)) {  /* data relocs */
     return REL_ABS;
   }
 
@@ -368,7 +369,7 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
 
     btype = find_base(op->value,&base,sec,pc);
 
-    if (btype != BASE_ILLEGAL) {
+    if (btype > BASE_ILLEGAL) {
       if (btype == BASE_PCREL) {
         if (reloctype == REL_ABS)
           reloctype = REL_PC;
@@ -388,7 +389,7 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
       }
 
       /* determine reloc size, offset and mask */
-      if (op->type >= OP_D8) {  /* data operand */
+      if (OP_DATA(op->type)) {  /* data operand */
         switch (op->type) {
           case OP_D8:
             size = 8;
@@ -397,9 +398,11 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
             size = 16;
             break;
           case OP_D32:
+          case OP_F32:
             size = 32;
             break;
           case OP_D64:
+          case OP_F64:
             size = 64;
             break;
           default:
@@ -453,7 +456,7 @@ static taddr make_reloc(int reloctype,operand *op,section *sec,
 
       add_nreloc_masked(reloclist,base,addend,reloctype,size,offset,mask);
     }
-    else {
+    else if (btype != BASE_NONE) {
 illreloc:
       general_error(38);  /* illegal relocation */
     }
@@ -729,28 +732,48 @@ dblock *eval_data(operand *op,size_t bitsize,section *sec,taddr pc)
 {
   dblock *db = new_dblock();
   taddr val;
+  tfloat flt;
 
   if ((bitsize & 7) || bitsize > 64)
     cpu_error(9,bitsize);  /* data size not supported */
-  if (op->type < OP_D8)
+  if (!OP_DATA(op->type))
     ierror(0);
 
   db->size = bitsize >> 3;
   db->data = mymalloc(db->size);
-  val = make_reloc(get_reloc_type(op),op,sec,pc,&db->relocs);
 
-  switch (db->size) {
-    case 1:
-      db->data[0] = val & 0xff;
-      break;
-    case 2:
-    case 4:
-    case 8:
-      setval(ppc_endianess,db->data,db->size,val);
-      break;
-    default:
-      ierror(0);
-      break;
+  if (type_of_expr(op->value) == FLT) {
+    if (!eval_expr_float(op->value,&flt))
+      general_error(60);  /* cannot evaluate floating point */
+
+    switch (bitsize) {
+      case 32:
+        conv2ieee32(1,db->data,flt);
+        break;
+      case 64:
+        conv2ieee64(1,db->data,flt);
+        break;
+      default:
+        cpu_error(10);  /* data has illegal type */
+        break;
+    }
+  }
+  else {
+    val = make_reloc(get_reloc_type(op),op,sec,pc,&db->relocs);
+
+    switch (db->size) {
+      case 1:
+        db->data[0] = val & 0xff;
+        break;
+      case 2:
+      case 4:
+      case 8:
+        setval(ppc_endianess,db->data,db->size,val);
+        break;
+      default:
+        ierror(0);
+        break;
+    }
   }
 
   return db;

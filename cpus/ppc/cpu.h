@@ -1,6 +1,6 @@
 /*
 ** cpu.h PowerPC cpu-description header-file
-** (c) in 2002,2006,2011 by Frank Wille
+** (c) in 2002,2006,2011,2015 by Frank Wille
 */
 
 extern int ppc_endianess;
@@ -39,6 +39,11 @@ typedef uint64_t utaddr;
 #define OP_D16 0x1002
 #define OP_D32 0x1003
 #define OP_D64 0x1004
+#define OP_F32 0x1005
+#define OP_F64 0x1006
+
+#define OP_DATA(t) (t >= OP_D8)
+#define OP_FLOAT(t) (t >= OP_F32)
 
 /* PPC specific relocations */
 #define REL_PPCEABI_SDA2 (LAST_STANDARD_RELOC+1)

@@ -41,5 +41,5 @@ None.
 
 This module has the following error messages:
 @itemize @minus
-@item None.
+@item 3010: section <%s>: alignment padding (%lu) not a multiple of %lu at 0x%llx
 @end itemize

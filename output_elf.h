@@ -1,5 +1,5 @@
 /* output_elf.h header file for ELF objects */
-/* (c) in 2002-2011 by Frank Wille */
+/* (c) in 2002-2015 by Frank Wille */
 
 /* e_indent indexes */
 #define EI_NIDENT  16
@@ -52,6 +52,7 @@
 #define EM_PPC            20
 #define EM_ARM            40
 #define EM_X86_64         62
+#define EM_JAGRISC        0x9004
 #define EM_CYGNUS_POWERPC 0x9025
 #define EM_ALPHA          0x9026
 
@@ -306,6 +307,9 @@ struct Rel64Node {
 #elif defined(VASM_CPU_X86)
 #define RELA (bytespertaddr == 8)
 #define ELFCPU (bytespertaddr == 8 ? EM_X86_64 : EM_386)
+#elif defined(VASM_CPU_JAGRISC)
+#define RELA 1
+#define ELFCPU EM_JAGRISC
 #else
 #define ELFCPU 0
 #endif

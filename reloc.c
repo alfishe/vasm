@@ -1,5 +1,5 @@
 /* reloc.c - relocation support functions */
-/* (c) in 2010,2011,2014 by Volker Barthelmann and Frank Wille */
+/* (c) in 2010-2015 by Volker Barthelmann and Frank Wille */
 
 #include "vasm.h"
 
@@ -21,7 +21,7 @@ rlist *add_nreloc(rlist **relocs,symbol *sym,taddr addend,
   rlist *rl;
   nreloc *r;
 
-  if (sym->sec!=NULL && (sym->sec->flags & ABSOLUTE))
+  if (sym->flags & ABSLABEL)
     return NULL;  /* no relocation, when symbol is from an ORG-section */
 
   /* mark symbol as referenced, so we can find unreferenced imported symbols */
@@ -65,7 +65,7 @@ int is_pc_reloc(symbol *sym,section *cur_sec)
     return 1;
   else if (LOCREF(sym))
     return (sym->sec!=cur_sec &&
-            (!(sym->sec->flags & ABSOLUTE) || !(cur_sec->flags & ABSOLUTE)));
+            (!(sym->flags & ABSLABEL) || !(cur_sec->flags & ABSOLUTE)));
   ierror(0);
   return 0;
 }

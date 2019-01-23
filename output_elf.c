@@ -1,10 +1,10 @@
 /* output_elf.c ELF output driver for vasm */
-/* (c) in 2002-2012 by Frank Wille */
+/* (c) in 2002-2015 by Frank Wille */
 
 #include "vasm.h"
 #include "output_elf.h"
 #if ELFCPU
-static char *copyright="vasm ELF output module 2.1 (c)2002-2012 Frank Wille";
+static char *copyright="vasm ELF output module 2.2 (c) 2002-2015 Frank Wille";
 static int be,cpu;
 static unsigned elfrelsize,shtreloc;
 
@@ -334,6 +334,10 @@ static utaddr get_reloc_type(rlist **rl,
   else {
 #include "elf_reloc_386.h"
   }
+#endif
+
+#ifdef VASM_CPU_JAGRISC
+#include "elf_reloc_jag.h"
 #endif
 
   if (t)

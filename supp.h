@@ -1,5 +1,5 @@
 /* supp.h miscellaneous support routines */
-/* (c) in 2008-2010 by Frank Wille */
+/* (c) in 2008-2015 by Frank Wille */
 
 #ifndef SUPP_H
 #define SUPP_H
@@ -39,6 +39,7 @@ void conv2ieee80(int,uint8_t *,tfloat);
 void conv2ieee128(int,uint8_t *,tfloat);
 
 void fw8(FILE *,uint8_t);
+void fw16(FILE *,uint16_t,int);
 void fw32(FILE *,uint32_t,int);
 void fwdata(FILE *,void *,size_t);
 void fwsblock(FILE *,sblock *);

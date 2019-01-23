@@ -32,7 +32,7 @@ char *skip(char *s)
 void eol(char *s)
 {
   s = skip(s);
-  if (*s!='\0' && *s!=commentchar)
+  if (!ISEOL(s))
     syntax_error(6);
 }
 
@@ -47,7 +47,7 @@ char *skip_operand(char *s)
       else
         syntax_error(3);
     }
-    if(!*s||*s==commentchar||(*s==','&&par_cnt==0))
+    if(ISEOL(s)||(*s==','&&par_cnt==0))
       break;
     s++;
   }

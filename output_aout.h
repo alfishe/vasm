@@ -197,13 +197,13 @@ struct RelocNode {
 
 
 #if defined(VASM_CPU_M68K)
-#define MID MID_SUN020
+/* MID defined in cpus/m68k/cpu.h */
 #elif defined(VASM_CPU_PPC)
 #define MID MID_POWERPC
 #elif defined(VASM_CPU_ARM)
 #define MID MID_ARM6
 #elif defined(VASM_CPU_X86)
 #define MID MID_PC386
-#else
+#elif defined(VASM_CPU_JAGRISC)
 #define MID (0)
 #endif

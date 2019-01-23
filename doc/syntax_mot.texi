@@ -4,7 +4,7 @@ M68k and ColdFire families of CPUs, which is available with the extension
 
 @section Legal
 
-    This module is copyright in 2002-2014 by Frank Wille.
+    This module is copyright in 2002-2015 by Frank Wille.
 
     This archive may be redistributed without modifications and used
     for non-commercial purposes.
@@ -23,6 +23,12 @@ This syntax module provides the following additional options:
 @item -align
  Enables natural alignment for data (e.g. @code{dc.?}, @code{ds.?}) and
  offset directives (@code{rs.?}, @code{so.?}, @code{fo.?}).
+
+@item -allmp
+ Makes all 35 macro arguments available. Default is 9 (@code{\1} to
+ @code{\9}). More arguments can be accessed through @code{\a} to
+ @code{\z}) which may conflict with escape characters or named arguments,
+ therefore they are not enabled by default.
 
 @item -devpac
  Devpac-compatibility mode. Only directives known to Devpac are recognized.
@@ -60,6 +66,10 @@ This syntax module provides the following additional options:
 
 @item -spaces
  Allow blanks in operands.
+
+@item -warncomm
+ Warn about all lines, which have comments in the operand field, introduced
+ by a blank character. For example in: @code{dc.w 1 + 2}.
 
 @end table
 
@@ -135,7 +145,6 @@ CPU- and output-module support them):
       Insert as much zero bytes as required to reach an address where
       <bitcount> low order bits are zero. For example @code{align 2} would
       make an alignment to the next 32-bit boundary.
-      Equivalent to @code{cnop 0,1<<bitcount}.
 
 @item blk.b <exp>[,<fill>]
       Equivalent to @code{dcb.b <exp>,<fill>}.
@@ -184,6 +193,8 @@ CPU- and output-module support them):
 @item cnop <offset>,<alignment>
       Insert as much zero bytes as required to reach an address which
       can be divided by <alignment>. Then add <offset> zero bytes.
+      May fill the pad-bytes with no-operation instructions for certain
+      cpus.
 
 @item code
       Equivalent to @code{section code,code}.
@@ -193,6 +204,10 @@ CPU- and output-module support them):
 
 @item code_f
       Equivalent to @code{section code_f,code,fast}.
+
+@item comm <symbol>,<size>
+      Create a common symbol with the given size. The alignment is always
+      32 bits.
 
 @item comment
       Everything in the operand field is ignored and seen as a comment.
@@ -464,7 +479,7 @@ CPU- and output-module support them):
       In Devpac- and PhxAss-compatibility mode up to 35 arguments are
       accepted, where argument 10-35 can be referenced by @code{\a} to
       @code{\z}.
-      The special argument @code{\@@} inserts a unique id, useful for
+      The special code @code{\@@} inserts a unique id, useful for
       defining labels. @code{\#} is replaced by the number of arguments
       (also stored in @code{NARG}) and @code{\?n} is replaced by the
       length of argument @code{n}.
@@ -517,12 +532,13 @@ CPU- and output-module support them):
       The the page length for a listing file to <len> lines.
       Currently ignored.
 
-@item printt <string>
-      Prints <string> to stdout.
+@item printt <string>[,<string>...]
+      Prints <string> to stdout. Each additional string into a new line.
+      Quotes are optional.
 
-@item printv <expression>
-      Evaluate <expression> and print it to stdout out in decimal and
-      hexadecimal form.
+@item printv <expression>[,<expression>...]
+      Evaluate <expression> and print it to stdout out in hexadecimal,
+      decimal, ASCII and binary format.
 
 @item public <symbol>[,<symbol>...]
       Flag <symbol> as an external symbol, which means that <symbol> is
@@ -555,18 +571,22 @@ CPU- and output-module support them):
 @item rsset
       Equivalent to @code{setso}, but the symbol manipulated is @code{__RS}.
 
-@item section [<name>,]<sec_type>[,<mem_type>]]
+@item section [<name>,]<sec_type>[,<mem_type>]
       Starts a new section named @code{<name>} or reactivates an old one.
       @code{<sec_type>} defines the section type and may be @code{code},
       @code{text} (same as @code{code}), @code{data} or @code{bss}.
       @code{<sec_type>} defaults to @code{code} in Phxass mode. Otherwise
       a single argument will start a section with the type and name of
       @code{<sec_type>}. When @code{<mem_type>} is given
-      it defines the type of memory, where the section can
-      be loaded. This is Amiga-specific, and allowed identifiers are
-      @code{chip} for Chip-RAM and @code{fast} for Fast-RAM. Optionally
-      it is also possible to attach the suffix @code{_C}, @code{_F} or
-      @code{_P} to the @code{<sec_type>} argument for defining the memory type.
+      it defines a 32-bit memory attribute, which defines where to load
+      the section.
+      @code{<mem_type>} is either a numerical constant or one of the
+      keywords @code{chip} (for Chip-RAM) or @code{fast} (for Fast-RAM).
+      Optionally it is also possible to attach the suffix @code{_C}, @code{_F}
+      or @code{_P} to the @code{<sec_type>} argument for defining the memory
+      type.
+      The memory attributes are currently only used in the hunk-format
+      output module.
 
 @item <symbol> set <expression>
       Create a new symbol with the name <symbol> and assign
@@ -601,6 +621,12 @@ CPU- and output-module support them):
 
 @item <name> ttl
       Motorola syntax. Equivalent to @code{idnt <name>}.
+
+@item weak <symbol>[,<symbol>...]
+      Flag <symbol> as a weak symbol, which means that <symbol> is
+      visible to all modules in the linking process and may be replaced
+      by any global symbol with the same name.
+      When a weak symbol remains undefined its value defaults to 0.
 
 @item xdef <symbol>[,<symbol>...]
       Flag <symbol> as an global symbol, which means that
@@ -641,13 +667,13 @@ This module has the following error messages:
 @item 1010: , expected
 @item 1011: identifier expected
 @item 1012: directive has no effect
-@item 1013: expression must be a constant
+@item 1013: unexpected "%s" without "%s"
 @item 1014: illegal section type
-@item 1015: repeatedly defined symbol
+@item 1015: macro id insert on empty stack
 @item 1016: illegal memory type
-@item 1017: unexpected %s without %s
-@item 1018: endc/endif missing for conditional block started at %s line %d
-@item 1020: maximum if-nesting depth exceeded (%d levels)
+@item 1017: macro id stack overflow
+@item 1018: macro id pull without matching push
+@item 1019: check comment
 @item 1022: missing %c
 
 @end itemize

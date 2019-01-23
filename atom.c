@@ -212,7 +212,7 @@ void add_atom(section *sec,atom *a)
 
   a->changes = 0;
   a->src = cur_src;
-  a->line = cur_src->line;
+  a->line = cur_src!=NULL ? cur_src->line : 0;
 
   if (sec->last) {
     atom *pa = sec->last;
@@ -334,7 +334,7 @@ void print_atom(FILE *f,atom *p)
       break;
     case PRINTEXPR:
       fprintf(f,"expr: ");
-      print_expr(f,p->content.pexpr);
+      print_expr(f,p->content.pexpr->print_exp);
       break;
     case ROFFS:
       fprintf(f,"roffs: offset ");
@@ -352,6 +352,50 @@ void print_atom(FILE *f,atom *p)
       break;
     default:
       ierror(0);
+  }
+}
+
+
+/* prints and formats an expression from a PRINTEXPR atom */
+void atom_printexpr(printexpr *pexp,section *sec,taddr pc)
+{
+  taddr t;
+  long long v;
+  int i;
+
+  eval_expr(pexp->print_exp,&t,sec,pc);
+  if (pexp->type==PEXP_SDEC && (t&(1LL<<(pexp->size-1)))!=0) {
+    /* signed decimal */
+    v = -1;
+    v &= ~(long long)MAKEMASK(pexp->size);
+  }
+  else
+    v = 0;
+  v |= t & MAKEMASK(pexp->size);
+
+  switch (pexp->type) {
+    case PEXP_HEX:
+      printf("%llX",(unsigned long long)v);
+      break;
+    case PEXP_SDEC:
+      printf("%lld",v);
+      break;
+    case PEXP_UDEC:
+      printf("%llu",(unsigned long long)v);
+      break;
+    case PEXP_BIN:
+      for (i=pexp->size-1; i>=0; i--)
+        putchar((v & (1LL<<i)) ? '1' : '0');
+      break;
+    case PEXP_ASC:
+      for (i=((pexp->size+7)>>3)-1; i>=0; i--) {
+        unsigned char c = (v>>(i*8))&0xff;
+        putchar(isprint(c) ? c : '.');
+      }
+      break;
+    default:
+      ierror(0);
+      break;
   }
 }
 
@@ -471,16 +515,22 @@ atom *new_text_atom(char *txt)
 {
   atom *new = new_atom(PRINTTEXT,1);
 
-  new->content.ptext = txt ? txt : "";
+  new->content.ptext = txt ? txt : "\n";
   return new;
 }
 
 
-atom *new_expr_atom(expr *x)
+atom *new_expr_atom(expr *exp,int type,int size)
 {
   atom *new = new_atom(PRINTEXPR,1);
 
-  new->content.pexpr = x;
+  new->content.pexpr = mymalloc(sizeof(*new->content.pexpr));
+  if (exp==NULL || type<PEXP_HEX || type>PEXP_ASC || size<1
+      || size>sizeof(long long)*8)
+    ierror(0);
+  new->content.pexpr->print_exp = exp;
+  new->content.pexpr->type = type;
+  new->content.pexpr->size = size;
   return new;
 }
 

@@ -1,6 +1,6 @@
 /*
 ** cpu.h Jaguar RISC cpu-description header-file
-** (c) in 2014 by Frank Wille
+** (c) in 2014-2015 by Frank Wille
 */
 
 extern int jag_big_endian;
@@ -22,10 +22,11 @@ typedef uint32_t utaddr;
 #define INST_ALIGN 2
 
 /* default alignment for n-bit data */
-#define DATA_ALIGN(n) jag_data_align(n)
+#define DATA_ALIGN(n) ((n<=8)?1:2)
 
 /* operand class for n-bit data definitions */
-#define DATA_OPERAND(n) (n==64 ? DATA64_OP : DATA_OP)
+int jag_data_operand(int);
+#define DATA_OPERAND(n) jag_data_operand(n)
 
 /* returns true when instruction is valid for selected cpu */
 #define MNEMONIC_VALID(i) cpu_available(i)
@@ -42,6 +43,7 @@ enum {
   NO_OP=0,
   DATA_OP,
   DATA64_OP,
+  DATAI_OP,             /* 32-bit with swapped halfwords */
   REG,                  /* register Rn */
   IMM0,                 /* 5-bit immediate expression (0-31) */
   IMM1,                 /* 5-bit immediate expression (1-32) */
@@ -70,6 +72,14 @@ typedef struct {
 
 #define OPSWAP 128      /* swapped operands in instruction word encoding */
 
+/* Register symbols */
+#define HAVE_REGSYMS
+#define REGSYMHTSIZE 64
+#define RTYPE_R      0  /* R0-R31 */
+#define RTYPE_CC     1  /* condition codes (0-31) */
+
 /* Prototypes */
-int jag_data_align(int);
 int cpu_available(int);
+
+int parse_cpu_label(char *,char **);
+#define PARSE_CPU_LABEL(l,s) parse_cpu_label(l,s)

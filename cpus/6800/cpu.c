@@ -1,6 +1,6 @@
 /*
  * cpu.c 6800, 68hc11 cpu description file
- * (c) in 2013-2014 by Esben Norby and Frank Wille
+ * (c) in 2013-2015 by Esben Norby and Frank Wille
  */
 
 #include "vasm.h"
@@ -13,7 +13,7 @@ int mnemonic_cnt = sizeof(mnemonics) / sizeof(mnemonics[0]);
 
 int		bitsperbyte = 8;
 int		bytespertaddr = 2;
-char *		cpu_copyright = "vasm 6800/68hc11 cpu backend 0.2 (c) 2013-2014 Esben Norby";
+char *		cpu_copyright = "vasm 6800/68hc11 cpu backend 0.2a (c) 2013-2015 Esben Norby";
 char *		cpuname = "6800";
 
 static uint8_t	cpu_type = M6800;
@@ -312,7 +312,7 @@ eval_data(operand *op, size_t bitsize, section *sec, taddr pc)
 				break;
 			}
 		}
-		else
+		else if (btype != BASE_NONE)
 			general_error(38);  /* illegal relocation */
 	}
 

@@ -1,13 +1,13 @@
 /* vasm.c  main module for vasm */
-/* (c) in 2002-2014 by Volker Barthelmann */
+/* (c) in 2002-2015 by Volker Barthelmann */
 
 #include <stdlib.h>
 #include <stdio.h>
 
 #include "vasm.h"
 
-#define _VER "vasm 1.7b"
-char *copyright = _VER " (c) in 2002-2014 Volker Barthelmann";
+#define _VER "vasm 1.7c"
+char *copyright = _VER " (c) in 2002-2015 Volker Barthelmann";
 #ifdef AMIGA
 static const char *_ver = "$VER: " _VER " " __AMIGADATE__ "\r\n";
 #endif
@@ -50,6 +50,7 @@ static int listtitlecnt;
 static FILE *outfile=NULL;
 
 static section *first_section,*last_section;
+static section *prev_sec=NULL,*prev_org=NULL;
 
 static taddr rorg_pc=0;
 static taddr org_pc;
@@ -159,10 +160,12 @@ static void resolve_section(section *sec)
         rorg_pc=*p->content.rorg;
         org_pc=sec->pc;
         sec->pc=rorg_pc;
+        sec->flags|=ABSOLUTE;
       }
       else if(p->type==RORGEND&&rorg_pc!=0){
         sec->pc=org_pc+(sec->pc-rorg_pc);
         rorg_pc=0;
+        sec->flags&=~ABSOLUTE;
       }
       else if(p->type==LABEL){
         symbol *label=p->content.label;
@@ -337,12 +340,9 @@ static void assemble(void)
         cpu_opts(p->content.opts);
 #endif
       else if(p->type==PRINTTEXT)
-        printf("%s\n",p->content.ptext);
-      else if(p->type==PRINTEXPR){
-        taddr val;
-        eval_expr(p->content.pexpr,&val,sec,sec->pc);
-        printf("%ld (0x%lx)\n",(long)val,(unsigned long)val);
-      }
+        printf("%s",p->content.ptext);
+      else if(p->type==PRINTEXPR)
+        atom_printexpr(p->content.pexpr,sec,sec->pc);
       else if(p->type==ASSERT){
         assertion *ast=p->content.assert;
         taddr val;
@@ -795,6 +795,18 @@ source *new_source(char *filename,char *text,size_t size)
 {
   static unsigned long id = 0;
   source *s = mymalloc(sizeof(source));
+  char *p;
+  size_t i;
+
+  /* scan source for strange characters */
+  for (p=text,i=0; i<size; i++,p++) {
+    if (*p == 0x1a) {
+      /* EOF character - replace by newline and ignore rest of source */
+      *p = '\n';
+      size = i + 1;
+      break;
+    }
+  }
 
   s->parent = cur_src;
   s->parent_line = cur_src ? cur_src->line : 0;
@@ -802,11 +814,12 @@ source *new_source(char *filename,char *text,size_t size)
   s->text = text;
   s->size = size;
   s->macro = NULL;
-  s->repeat = 1;      /* read just once */
-  s->num_params = -1; /* not a macro, no parameters */
+  s->repeat = 1;        /* read just once */
+  s->cond_level = clev; /* remember level of conditional nesting */
+  s->num_params = -1;   /* not a macro, no parameters */
   s->param[0] = emptystr;
   s->param_len[0] = 0;
-  s->id = id++;	      /* every source has a unique id - important for macros */
+  s->id = id++;	        /* every source has unique id - important for macros */
   s->srcptr = text;
   s->line = 0;
   s->linebuf = mymalloc(MAXLINELENGTH);
@@ -818,6 +831,33 @@ source *new_source(char *filename,char *text,size_t size)
   s->reptn = cur_src ? cur_src->reptn : -1;
 #endif
   return s;
+}
+
+/* quit parsing the current source instance, leave macros, repeat loops
+   and restore the conditional assembly level */
+void end_source(source *s)
+{
+  if(s){
+    s->srcptr=s->text+s->size;
+    s->repeat=1;
+    clev=s->cond_level;
+  }
+}
+
+/* set current section, remember last */
+void set_section(section *s)
+{
+  if (current_section!=NULL && !(current_section->flags & UNALLOCATED)) {
+    if (current_section->flags & ABSOLUTE)
+      prev_org = current_section;
+    else
+      prev_sec = current_section;
+  }
+#if HAVE_CPU_OPTS
+  if (!(s->flags & UNALLOCATED))
+    cpu_opts_init(s);  /* set initial cpu opts before the first atom */
+#endif
+  current_section = s;
 }
 
 /* creates a new section with given attributes and alignment;
@@ -837,6 +877,7 @@ section *new_section(char *name,char *attr,int align)
   p->align=align;
   p->org=p->pc=0;
   p->flags=0;
+  p->memattr=0;
   memset(p->pad,0,MAXPADBYTES);
   p->padbytes=1;
   if(last_section)
@@ -846,9 +887,8 @@ section *new_section(char *name,char *attr,int align)
   return p;
 }
 
-/* create a dummy code section for each new ORG directive and
-   switches to it */
-void new_org(taddr org)
+/* create a dummy code section for each new ORG directive */
+section *new_org(taddr org)
 {
   char buf[16];
   section *sec;
@@ -857,10 +897,7 @@ void new_org(taddr org)
   sec = new_section(buf,"acrwx",1);
   sec->org = sec->pc = org;
   sec->flags |= ABSOLUTE;  /* absolute destination address */
-  current_section = sec;
-#if HAVE_CPU_OPTS
-  cpu_opts_init(sec);  /* set initial cpu opts before the first atom */
-#endif
+  return sec;
 }
 
 /* switches current section to the section with the specified name */
@@ -873,10 +910,7 @@ void switch_section(char *name,char *attr)
   if(!p)
     general_error(2,name);
   else
-    current_section=p;
-#if HAVE_CPU_OPTS
-  cpu_opts_init(p);  /* set initial cpu opts before the first atom */
-#endif
+    set_section(p);
 }
 
 /* Switches current section to an offset section. Create a new section when
@@ -897,10 +931,7 @@ void switch_offset_section(char *name,taddr offs)
   sec->flags |= UNALLOCATED;
   if (offs != -1)
     sec->org = sec->pc = offs;
-  current_section = sec;
-#if HAVE_CPU_OPTS
-  cpu_opts_init(sec);  /* set initial cpu opts before the first atom */
-#endif
+  set_section(sec);
 }
 
 /* returns current_section or the syntax module's default section,
@@ -914,6 +945,66 @@ section *default_section(void)
     switch_section(defsectname,defsecttype);
   }
   return sec;
+}
+
+/* restore last relocatable section */
+section *restore_section(void)
+{
+  if (prev_sec)
+    return prev_sec;
+  if (defsectname && defsecttype)
+    return new_section(defsectname,defsecttype,1);
+  return NULL;  /* no previous section or default section defined */
+}
+
+/* restore last absolute section */
+section *restore_org(void)
+{
+  if (prev_org)
+    return prev_org;
+  return new_org(0);  /* no previous org: default to ORG 0 */
+}
+
+/* end a relocated ORG block */
+int end_rorg(void)
+{
+  section *s = default_section();
+
+  if (s == NULL) {
+    general_error(3);
+    return 0;
+  }
+  if (s->flags & IN_RORG) {
+    add_atom(s,new_rorgend_atom());
+    if (s->flags & PREVABS)
+      s->flags |= ABSOLUTE;
+    else
+      s->flags &= ~ABSOLUTE;
+    return 1;
+  }
+  general_error(44);  /* no Rorg block to end */
+  return 0;
+}
+
+/* start a relocated ORG block */
+void start_rorg(taddr rorg)
+{
+  section *s = default_section();
+
+  if (s == NULL) {
+    general_error(3);
+    return;
+  }
+  if (s->flags & IN_RORG)
+    end_rorg();  /* we are already in a ROrg-block, so close it first */
+  add_atom(s,new_rorg_atom(rorg));
+  s->flags |= IN_RORG;
+  if (!(s->flags & ABSOLUTE)) {
+    s->flags &= ~PREVABS;
+    s->flags |= ABSOLUTE;  /* make section absolute during the ROrg-block */
+  }
+  else
+    s->flags |= PREVABS;
 }
 
 void print_section(FILE *f,section *sec)

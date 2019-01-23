@@ -203,6 +203,14 @@ static void modify_errors(struct err_out *err,int flags,va_list vl)
 }
 
 
+void modify_gen_err(int flags,...)
+{
+  va_list vl;
+  va_start(vl,flags);
+  modify_errors(general_err_out,flags,vl);
+}
+
+
 void modify_syntax_err(int flags,...)
 {
   va_list vl;

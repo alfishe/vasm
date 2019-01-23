@@ -71,6 +71,7 @@ static const char *type_name[] = {
 static ubyte *vobj;   /* base address of VOBJ buffer */
 static size_t vlen;   /* length of VOBJ file in buffer */
 static ubyte *p;      /* current object pointer */
+static int bpb,bpt;   /* bits per byte, bytes per taddr */
 static taddr bptmask; /* mask LSB to fit bytes per taddr */
 
 #define BPTMASK(x) (unsigned long long)((x)&bptmask)
@@ -196,12 +197,13 @@ static void read_section(struct vobj_section *vsect,
         printf("symbol index %d is illegal!\n",sym+1);
         continue;
       }
-      if (bsiz<0 || bsiz>(sizeof(taddr)<<3)) {
+      if (bsiz<0 || bsiz>bpt*bpb) {
         printf("size of %d bits is illegal!\n",bsiz);
         continue;
       }
-      if (bpos<0 || bpos>=bsiz) {
-        printf("bit-position %d is outside of a %d bit word!\n",bpos,bsiz);
+      if (bpos<0 || bpos+bsiz>bpt*bpb) {
+        printf("bit field start=%d, size=%d doesn't fit into target address "
+               "type (%d bits)!\n",bpos,bsiz,bpt*bpb);
         continue;
       }
 
@@ -260,7 +262,7 @@ static int vobjdump(void)
   p = vobj;
 
   if (vlen>4 && p[0]==0x56 && p[1]==0x4f && p[2]==0x42 && p[3]==0x4a) {
-    int endian,bpb,bpt,nsecs,nsyms,i;
+    int endian,nsecs,nsyms,i;
     const char *cpu_name;
     struct vobj_symbol *vsymbols = NULL;
     struct vobj_section *vsect = NULL;
@@ -283,7 +285,7 @@ static int vobjdump(void)
       fprintf(stderr,"%d bytes per taddr not supported!\n",bpt);
       return 1;
     }
-    bptmask = makemask(bpt*8);
+    bptmask = makemask(bpt*bpb);
 
     cpu_name = p;
     skip_string();  /* skip cpu-string */
@@ -388,7 +390,7 @@ int main(int argc,char *argv[])
       fprintf(stderr,"Cannot open \"%s\" for reading!\n",argv[1]);
   }
   else
-    fprintf(stderr,"vobjdump V0.3\nWritten by Frank Wille\n"
+    fprintf(stderr,"vobjdump V0.4\nWritten by Frank Wille\n"
             "Usage: %s <file name>\n",argv[0]);
 
   return rc;

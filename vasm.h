@@ -1,4 +1,4 @@
-/* vasm.h  main header file for vasm */
+  /* vasm.h  main header file for vasm */
 /* (c) in 2002-2014 by Volker Barthelmann */
 
 #include <stdlib.h>
@@ -29,6 +29,7 @@ typedef struct regsym regsym;
 #include "expr.h"
 #include "parse.h"
 #include "atom.h"
+#include "cond.h"
 #include "supp.h"
 
 #if defined(BIGENDIAN)&&!defined(LITTLEENDIAN)
@@ -77,10 +78,15 @@ struct source {
   macro *macro;
   unsigned long repeat;
   int cond_level;
+  struct macarg *argnames;
   int num_params;
   char *param[MAXMACPARAMS];
   int param_len[MAXMACPARAMS];
-  struct macarg *param_names;
+#if MAX_QUALIFIERS > 0
+  int num_quals;
+  char *qual[MAX_QUALIFIERS];
+  int qual_len[MAX_QUALIFIERS];
+#endif
   unsigned long id;
   char *srcptr;
   int line;
@@ -99,6 +105,8 @@ struct source {
 #define UNALLOCATED 4
 #define LABELS_ARE_LOCAL 8
 #define ABSOLUTE 16
+#define PREVABS 32          /* saved ABSOLUTE-flag during RORG-block */
+#define IN_RORG 64
 #define SECRSRVD (1L<<24)   /* bits 24..31 are reserved for output modules */
 
 /* section description */
@@ -112,6 +120,7 @@ struct section {
   uint8_t pad[MAXPADBYTES];
   int padbytes;
   uint32_t flags;
+  uint32_t memattr;  /* type of memory, used by some object formats */
   taddr org;
   taddr pc;
   uint32_t idx; /* usable by output module */
@@ -125,6 +134,11 @@ typedef struct mnemonic {
 #endif
   mnemonic_extension ext;
 } mnemonic;
+
+/* operand size flags (ORed with size in bits) */
+#define OPSZ_BITS(x)	((x) & 0xff)
+#define OPSZ_FLOAT      0x100  /* operand stored as floating point */
+#define OPSZ_SWAP	0x200  /* operand stored with swapped bytes */
 
 /* listing table */
 
@@ -170,13 +184,19 @@ void set_default_output_format(char *);
 FILE *locate_file(char *,char *);
 void include_source(char *);
 source *new_source(char *,char *,size_t);
+void end_source(source *);
+void set_section(section *);
 section *new_section(char *,char *,int);
-void new_org(taddr);
+section *new_org(taddr);
 section *find_section(char *,char *);
 void switch_section(char *,char *);
 void switch_offset_section(char *,taddr);
 void add_align(section *,taddr,expr *,int,unsigned char *);
 section *default_section(void);
+section *restore_section(void);
+section *restore_org(void);
+int end_rorg();
+void start_rorg(taddr);
 void print_section(FILE *,section *);
 void new_include_path(char *);
 void set_listing(int);
@@ -231,6 +251,8 @@ extern char *defsecttype;
 int init_syntax();
 int syntax_args(char *);
 void parse(void);
+char *parse_macro_arg(struct macro *,char *,struct namelen *,struct namelen *);
+int expand_macro(source *,char **,char *,int);
 char *skip(char *);
 char *skip_operand(char *);
 void eol(char *);
