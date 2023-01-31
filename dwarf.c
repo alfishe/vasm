@@ -133,7 +133,9 @@ static void make_file_lists(struct source_file *first_source)
     if (++file_idx != srcnode->index)
       ierror(0);
     newfil->name = filepart;
-    if (dwfil = first_dwfil) {
+
+    dwfil = first_dwfil;
+    if (dwfil) {
       while (dwfil->next != NULL)
         dwfil = dwfil->next;
       dwfil->next = newfil;

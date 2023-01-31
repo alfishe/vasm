@@ -89,7 +89,8 @@ static FILE *open_path(char *compdir,char *path,char *name,char *mode)
     strcat(pathbuf,path);
     strcat(pathbuf,name);
 
-    if (f = fopen(pathbuf,mode)) {
+    f = fopen(pathbuf,mode);
+    if (f) {
       if (depend_all || !abs_path(pathbuf))
         add_depend(pathbuf);
       return f;
@@ -106,7 +107,8 @@ static FILE *locate_file(char *filename,char *mode,struct include_path **ipath_u
 
   if (abs_path(filename)) {
     /* file name is absolute, then don't use any include paths */
-    if (f = fopen(filename,mode)) {
+    f = fopen(filename,mode);
+    if (f) {
       if (depend_all)
         add_depend(filename);
       if (ipath_used)
@@ -246,7 +248,8 @@ source *stdin_source(void)
 {
   struct source_file *srcfile;
 
-  if (srcfile = read_source_file(stdin)) {
+  srcfile = read_source_file(stdin);
+  if (srcfile) {
     srcfile->name = "stdin";
     srcfile->next = first_source;
     first_source = srcfile;
@@ -266,22 +269,31 @@ source *include_source(char *inc_name)
   filename = convert_path(inc_name);
 
   /* check whether this source file name was already included */
-  while (srcfile = *nptr) {
+  srcfile = *nptr;
+  while (srcfile) {
     if (!filenamecmp(srcfile->name,filename)) {
       myfree(filename);
       nptr = NULL;  /* reuse existing source in memory */
       break;
     }
     nptr = &srcfile->next;
+
+    if (nptr) {
+        srcfile = *nptr;
+    }
+    else {
+        srcfile = NULL;
+    }
   }
 
   if (nptr != NULL) {
     /* allocate, locate and read a new source file */
     struct include_path *ipath;
-    FILE *f;
+    FILE *f = locate_file(filename,"r",&ipath);
 
-    if (f = locate_file(filename,"r",&ipath)) {
-      if (srcfile = read_source_file(f)) {
+    if (f) {
+      srcfile = read_source_file(f);
+      if (srcfile) {
         srcfile->name = filename;
         srcfile->incpath = ipath;
         *nptr = srcfile;
@@ -309,7 +321,9 @@ void include_binary_file(char *inname,long nbskip,unsigned long nbkeep)
   FILE *f;
 
   filename = convert_path(inname);
-  if (f = locate_file(filename,"rb",NULL)) {
+  f = locate_file(filename,"rb",NULL);
+
+  if (f) {
     size_t size = filesize(f);
 
     if (size > 0) {

@@ -813,10 +813,10 @@ static uint16_t eval_rlsymbol(char **start)
    Return zero otherwise. May cause an error message on illegal symbol type. */
 {
   symbol *sym;
-  char *name;
+  char *name = parse_symbol(start);
   taddr val = 0;
 
-  if (name = parse_symbol(start)) {
+  if (name) {
     if ((sym = find_symbol(name)) &&
         (sym->flags & REGLIST) && sym->type==EXPRESSION) {
       if (!eval_expr(sym->expr,&val,NULL,0))
@@ -841,11 +841,11 @@ static signed char getreg(char **start,int indexreg)
   char *s = *start;
   char *p = NULL;
   char *q;
-  strbuf *loc;
+  strbuf *loc = get_local_label(0,&s);
   signed char reg = -1;
   regsym *sym;
 
-  if (loc = get_local_label(0,&s)) {
+  if (loc) {
     p = loc->str;
     q = p + loc->len;
   }
@@ -962,10 +962,10 @@ static signed char getbreg(char **start)
   char *s = *start;
   char *p = NULL;
   char *q;
-  strbuf *loc;
+  strbuf *loc = get_local_label(0,&s);
   regsym *sym;
 
-  if (loc = get_local_label(0,&s)) {
+  if (loc) {
     p = loc->str;
     q = p + loc->len;
   }
@@ -999,10 +999,10 @@ static signed char getfreg(char **start)
   char *s = *start;
   char *p = NULL;
   char *q;
-  strbuf *loc;
+  strbuf *loc = get_local_label(0,&s);
   regsym *sym;
 
-  if (loc = get_local_label(0,&s)) {
+  if (loc) {
     p = loc->str;
     q = p + loc->len;
   }
@@ -1109,24 +1109,27 @@ static char *getspecreg(char *s,operand *op,int first,int last,int cpuchk)
   char *q;
   strbuf *loc;
 
-  if ((*s=='<' && *(s+1)=='<') || (*s=='>' && *(s+1)=='>')) {
+  if ((*s == '<' && *(s + 1) == '<') || (*s == '>' && *(s + 1) == '>')) {
     /* ColdFire MAC scale factor << or >>, treated as special reg. name */
     p = s;
     s += 2;
     q = s;
   }
-  else if (loc = get_local_label(0,&s)) {
-    p = loc->str;
-    q = p + loc->len;
-  }
   else {
-    if (elfregs && *s=='%')
-      s++;
-    if (ISIDSTART(*s)) {
-      p = s++;
-      while (ISIDCHAR(*s) && *s!='.')
+    loc = get_local_label(0, &s);
+     if (loc) {
+        p = loc->str;
+        q = p + loc->len;
+    }
+    else {
+      if (elfregs && *s == '%')
         s++;
-      q = s;
+      if (ISIDSTART(*s)) {
+        p = s++;
+        while (ISIDCHAR(*s) && *s != '.')
+          s++;
+        q = s;
+      }
     }
   }
 
@@ -1165,9 +1168,9 @@ static char *getctrlreg(char *s,operand *op,int first,int last)
 {
   char *p = NULL;
   char *q;
-  strbuf *loc;
+  strbuf *loc = get_local_label(0,&s);
 
-  if (loc = get_local_label(0,&s)) {
+  if (loc) {
     p = loc->str;
     q = p + loc->len;
   }
@@ -1298,7 +1301,9 @@ static int get_any_register(char **start,operand *op,struct optype *ot)
       first = FIRST_CTRLREG;
       last = LAST_CTRLREG;
     }
-    if (s = getctrlreg(s,op,first,last)) {
+
+    s = getctrlreg(s,op,first,last);
+    if (s) {
       *start = s;
       return 1;
     }
@@ -1317,7 +1322,8 @@ static int get_any_register(char **start,operand *op,struct optype *ot)
       last = FIRST_CTRLREG - 1;
     }
 
-    if (s = getspecreg(s,op,first,last,1)) {
+    s = getspecreg(s,op,first,last,1);
+    if (s) {
       if (ot->flags & OTF_VXRNG4) {
         /* need a four-vector-register range, E0-E3, E20-E23, etc. */
         int vxreg = (unsigned char)op->reg;
@@ -1363,7 +1369,8 @@ static short getbasereg(char **start)
   short r = 0;
   regsym *sym;
 
-  if (loc = get_local_label(0,&s)) {
+  loc = get_local_label(0,&s);
+  if (loc) {
     p = loc->str;
     q = p + loc->len;
     r = -1;
@@ -6358,13 +6365,16 @@ int parse_cpu_label(char *labname,char **start)
         new_regsym(regsymredef,0,labname,RSTYPE_FPn,0,r);
       else if ((r = getbreg(&s)) >= 0)
         new_regsym(regsymredef,0,labname,RSTYPE_Bn,0,r);
-      else if (upd = getspecreg(s,&dummy,REG_VX00,REG_VX23,0)) {
-        new_regsym(regsymredef,0,labname,RSTYPE_En,0,
-                   (unsigned char)dummy.reg);
-        s = upd;
+      else {
+        upd = getspecreg(s, &dummy, REG_VX00, REG_VX23, 0);
+        if (upd) {
+          new_regsym(regsymredef, 0, labname, RSTYPE_En, 0,
+                     (unsigned char) dummy.reg);
+          s = upd;
+        } else
+          cpu_error(44);  /* register expected */
       }
-      else
-        cpu_error(44);  /* register expected */
+
       eol(s);
       *start = skip_line(s);
       return 1;

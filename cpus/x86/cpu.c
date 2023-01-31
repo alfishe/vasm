@@ -533,7 +533,9 @@ static int find_next_mnemonic(instruction *ip)
     int i,given,allowed,overlap,new_types[MAX_OPERANDS];
 
     for (i=0; i<MAX_OPERANDS; i++) {
-      if (allowed = mnemo->operand_type[i]) {
+      allowed = mnemo->operand_type[i];
+
+      if (allowed) {
         if (ip->op[i]) {
           given = ip->op[i]->parsed_type;
           overlap = allowed & given;
@@ -1078,7 +1080,9 @@ static int process_operands(instruction *ip,int final)
      instruction's default we need to select it by another opcode prefix */
   for (i=0; i<MAX_OPERANDS; i++) {
     if (ip->op[i] != NULL) {
-      if (seg = ip->op[i]->segoverride) {
+      seg = ip->op[i]->segoverride;
+
+      if (seg) {
         if (seg->reg_num != defaultseg) {
           if (!add_seg_prefix(ip,seg->reg_num)) {
             if (!final)
@@ -1284,7 +1288,8 @@ static unsigned char *output_prefixes(unsigned char *d,instruction *ip)
   int i;
 
   for (i=0; i<MAX_PREFIXES; i++) {
-    if (p = ip->ext.prefix[i])
+    p = ip->ext.prefix[i];
+    if (p)
       *d++ = p;
   }
   return d;
@@ -1320,7 +1325,8 @@ static unsigned char *output_disp(dblock *db,unsigned char *d,
   taddr val;
 
   for (i=0; i<MAX_OPERANDS; i++) {
-    if (op = ip->op[i]) {
+    op = ip->op[i];
+    if (op) {
       if (op->type & Disp) {
         mnemonic *mnemo = &mnemonics[ip->code];
         bits = get_disp_bits(op->type);
@@ -1374,8 +1380,10 @@ static unsigned char *output_imm(dblock *db,unsigned char *d,
   taddr val;
 
   for (i=0; i<MAX_OPERANDS; i++) {
-    if (op = ip->op[i]) {
-      if (ot = (op->type & Imm)) {
+    op = ip->op[i];
+    if (op) {
+      ot = op->type & Imm;
+      if (ot) {
         bits = get_imm_bits(ot);
 
 #if 0 /* done in optimize_imm() */
@@ -1544,7 +1552,9 @@ static regsym *parse_reg(char **pp)
         if (isdigit((unsigned char)*(p+1)) && *(p+2)==')')
           p += 3;
       }
-      if (r = find_regsym_nc(start,p-start)) {
+
+      r = find_regsym_nc(start,p-start);
+      if (r) {
         if ((r->reg_flags & (RegRex64|RegRex)) && mode_flag!=CODE_64BIT)
           return NULL;
         *pp = p;
@@ -1606,7 +1616,9 @@ int parse_operand(char *p,int len,operand *op,int requirements)
         cpu_error(14);  /* memory operand expected */
         return PO_CORRUPT;
       }
-      if (op->basereg = parse_reg(&p)) {
+
+      op->basereg = parse_reg(&p);
+      if (op->basereg) {
         op->flags |= OPER_REG;
         given_type |= op->basereg->reg_type & ~BaseIndex;
       }

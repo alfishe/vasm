@@ -186,7 +186,9 @@ char *skip_identifier(char *s)
     s++;
     while (ISIDCHAR(*s))
       s++;
-    if (s = CHKIDEND(name,s))
+
+    s = CHKIDEND(name,s);
+    if (s)
       if (!ISBADID(name,s-name))
         return s;
   }
@@ -200,9 +202,9 @@ strbuf *parse_identifier(int n,char **s)
 {
   static strbuf buf[EXPBUFNO+1];
   char *name = *s;
-  char *endname;
+  char *endname = skip_identifier(name);
 
-  if (endname = skip_identifier(name)) {
+  if (endname) {
     *s = endname;
     cutstr(&buf[n],name,endname-name);
     return &buf[n];
@@ -356,7 +358,8 @@ char *parse_labeldef(char **line,int needcolon)
     needcolon = 1;  /* colon required, when label doesn't start at 1st column */
   }
 
-  if (labname = parse_symbol(&s)) {
+  labname = parse_symbol(&s);
+  if (labname) {
     if (!colon_at_label)
       s = skip(s);  /* blanks between label and colon allowed */
     if (*s == ':') {
@@ -415,11 +418,15 @@ static struct namelen *dirlist_match(char *s,char *e,struct namelen *list)
   if (!isspace((unsigned char )*s) && *s!='\0')
     return NULL;  /* cannot be end of directive */
 
-  while (len = list->len) {
+  len = list->len;
+  while (len) {
     if (s-name==len && !strnicmp(name,list->name,len))
         return list;
     list++;
+
+    len = list->len;
   }
+
   return NULL;
 }
 
@@ -533,7 +540,8 @@ struct macarg *addmacarg(struct macarg **list,char *start,char *end)
   int len = end-start;
 
   /* count arguments */
-  if (lastarg = *list) {
+  lastarg = *list;
+  if (lastarg) {
     while (lastarg->argnext)
       lastarg = lastarg->argnext;
   }
@@ -623,7 +631,9 @@ macro *new_macro(char *name,struct namelen *maclist,struct namelen *endmlist,
           ma = addmacarg(&m->argnames,args,end);
           m->num_argnames++;
           args = skip(end);
-          if (end = MACRO_ARG_OPTS(m,n,ma->argname,args))
+
+          end = MACRO_ARG_OPTS(m,n,ma->argname,args);
+          if (end)
             args = skip(end);  /* got defaults and qualifiers */
           else
             addmacarg(&m->defaults,args,args);  /* default is empty */
@@ -866,12 +876,15 @@ static void start_repeat(char *rept_end)
           strbuf *buf;
 
           src->repeat = 0;
-          while (buf = parse_name(0,&p)) {
+          buf = parse_name(0,&p);
+          while (buf) {
             addmacarg(&src->irpvals,buf->str,buf->str+buf->len);
             src->repeat++;
             p = skip(p);
             if (*p == ',')
               p = skip(p+1);
+
+            buf = parse_name(0,&p);
           }
         }
         break;
@@ -1097,7 +1110,8 @@ char *read_next_line(void)
         general_error(26,cur_src->name);  /* macro definition inside macro */
 
     while (s <= (srcend-enddir_minlen)) {
-      if (dir = dirlist_match(s,srcend,enddir_list)) {
+      dir = dirlist_match(s,srcend,enddir_list);
+      if (dir) {
         if (cur_macro != NULL) {
           add_macro();  /* link macro-definition into hash-table */
           enddir_list = NULL;

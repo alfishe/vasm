@@ -455,7 +455,9 @@ static void write_listing_wide(char *listname,section *first_section)
       }
       else if (a->type == SPACE) {
         dlen = a->content.sb->size;
-        if (spc = a->content.sb->space * dlen) {
+        spc = a->content.sb->space * dlen;
+
+        if (spc) {
           for (; i<dlen; i++,pc++) {
             if (!(i % listbpl)) {
               if (i) {

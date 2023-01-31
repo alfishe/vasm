@@ -169,7 +169,8 @@ int check_symbol(char *name)
 {
   symbol *sym;
 
-  if (sym = find_symbol(name)) {
+  sym = find_symbol(name);
+  if (sym) {
     if (sym->type != IMPORT) {
       general_error(67,name);  /* repeatedly defined symbol */
       return 1;
@@ -314,7 +315,8 @@ symbol *new_labsym(section *sec,char *name)
     name = buf->str;
   }
 
-  if (new = find_symbol(name)) {
+  new = find_symbol(name);
+  if (new) {
     if (new->type!=IMPORT) {
       symbol *old = new;
 

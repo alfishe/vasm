@@ -50,3 +50,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# CMake build artifacts
+build
+cmake-build-*
+
+# Jetbrains IDE family (CLion, etc.)
+.idea

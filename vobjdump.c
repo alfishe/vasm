@@ -324,7 +324,8 @@ static int vobjdump(void)
 
     /* read symbols */
     if (nsyms) {
-      if (vsymbols = malloc(nsyms * sizeof(struct vobj_symbol))) {
+      vsymbols = malloc(nsyms * sizeof(struct vobj_symbol));
+      if (vsymbols) {
         for (i=0; i<nsyms; i++)
           read_symbol(&vsymbols[i]);
       }
@@ -336,7 +337,8 @@ static int vobjdump(void)
     }
 
     /* read and print sections */
-    if (vsect = malloc(nsecs * sizeof(struct vobj_section))) {
+    vsect = malloc(nsecs * sizeof(struct vobj_section));
+    if (vsect) {
       for (i=0; i<nsecs; i++)
         read_section(&vsect[i],vsymbols,nsyms);
     }
@@ -392,11 +394,13 @@ int main(int argc,char *argv[])
   int rc = 1;
 
   if (argc == 2) {
-    FILE *f;
+    FILE *f = fopen(argv[1],"rb");
 
-    if (f = fopen(argv[1],"rb")) {
-      if (vlen = filesize(f,argv[1])) {
-        if (vobj = malloc(vlen)) {
+    if (f) {
+      vlen = filesize(f,argv[1]);
+      if (vlen) {
+        vobj = malloc(vlen);
+        if (vobj) {
           if (fread(vobj,1,vlen,f) == vlen)
             rc = vobjdump();
           else

@@ -97,7 +97,9 @@ static expr *primary_expr(void)
     EXPSKIP();
     return new;
   }
-  if(buf=get_local_label(EXPBUFNO,&s)){
+
+  buf=get_local_label(EXPBUFNO,&s);
+  if(buf){
     symbol *sym=find_symbol(buf->str);
     if(!sym)
       sym=new_import(buf->str);
@@ -208,7 +210,9 @@ static expr *primary_expr(void)
     }else new=curpc_expr();
     return new;
   }
-  if(buf=parse_identifier(EXPBUFNO,&s)){
+
+  buf=parse_identifier(EXPBUFNO,&s);
+  if(buf){
     symbol *sym;    
     EXPSKIP();
     sym=find_symbol(buf->str);
@@ -274,12 +278,13 @@ static expr *unary_expr(void)
 {
   expr *new;
   char *m;
-  int len;
+  int len=EXT_UNARY_NAME(s);
+
   if(*s=='+'||*s=='-'||*s=='!'||*s=='~'){
     m=s++;
     EXPSKIP();
   }
-  else if(len=EXT_UNARY_NAME(s)){
+  else if(len){
     m=s;
     s+=len;
     EXPSKIP();
@@ -627,12 +632,16 @@ expr **find_sym_expr(expr **ptree,char *name)
   if((*ptree)->left!=NULL &&
      (*ptree)->left->type==SYM&&!strcmp((*ptree)->left->c.sym->name,name))
     return &(*ptree)->left;
-  if(psym=find_sym_expr(&(*ptree)->left,name))
+
+  psym=find_sym_expr(&(*ptree)->left,name);
+  if(psym)
     return psym;
   if((*ptree)->right!=NULL &&
      (*ptree)->right->type==SYM&&!strcmp((*ptree)->right->c.sym->name,name))
     return &(*ptree)->right;
-  if(psym=find_sym_expr(&(*ptree)->right,name))
+
+  psym=find_sym_expr(&(*ptree)->right,name);
+  if(psym)
     return psym;
   return NULL;
 }
@@ -1382,8 +1391,8 @@ void print_expr(FILE *f,expr *p)
 static int _find_base(expr *p,symbol **base,section *sec,taddr pc)
 {
 #ifdef EXT_FIND_BASE
-  int ret;
-  if(ret=EXT_FIND_BASE(base,p,sec,pc))
+  int ret=EXT_FIND_BASE(base,p,sec,pc);
+  if(ret)
     return ret;
 #endif
   if(p->type==SYM){
@@ -1461,7 +1470,8 @@ taddr parse_constexpr(char **s)
   expr *tree;
   taddr val = 0;
 
-  if (tree = parse_expr(s)) {
+  tree = parse_expr(s);
+  if (tree) {
     simplify_expr(tree);
     switch(tree->type){
       case NUM:

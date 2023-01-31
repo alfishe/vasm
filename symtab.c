@@ -23,8 +23,13 @@ size_t hashcode(char *name)
   size_t h = 5381;
   int c;
 
-  while (c = (unsigned char)*name++)
+  c = (unsigned char)*name++;
+  while (c) {
     h = ((h << 5) + h) + c;
+
+    c = (unsigned char)*name++;
+  }
+
   return h;
 }
 
@@ -42,8 +47,13 @@ size_t hashcode_nc(char *name)
   size_t h = 5381;
   int c;
 
-  while (c = (unsigned char)*name++)
+  c = (unsigned char)*name++;
+  while (c) {
     h = ((h << 5) + h) + tolower(c);
+
+    c = (unsigned char)*name++;
+  }
+
   return h;
 }
 

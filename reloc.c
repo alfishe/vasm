@@ -55,7 +55,8 @@ rlist *add_extnreloc_masked(rlist **relocs,symbol *sym,taddr addend,int type,
   rlist *rl;
   nreloc *r;
 
-  if (rl = add_extnreloc(relocs,sym,addend,type,bitoffs,size,byteoffs)) {
+  rl = add_extnreloc(relocs,sym,addend,type,bitoffs,size,byteoffs);
+  if (rl) {
     r = rl->reloc;
     r->mask = mask;
   }

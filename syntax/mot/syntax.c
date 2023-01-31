@@ -383,7 +383,8 @@ static char *read_sec_attr(char *attr,char *s,uint32_t *mem)
     type = s;
 
     /* check for "chip" or "fast" memory type (AmigaDOS) */
-    if (s = skip_identifier(s)) {
+    s = skip_identifier(s);
+    if (s) {
       if (s-type==4 && !strnicmp(type,"chip",4)) {
         *mem = 2;  /* AmigaDOS MEMF_CHIP */
         return skip(s);
@@ -440,7 +441,8 @@ static void handle_section(char *s)
   uint32_t mem = 0;
 
   /* read section name */
-  if (buf = parse_name(0,&s))
+  buf = parse_name(0,&s);
+  if (buf)
     name = buf->str;
   else
     return;
@@ -659,7 +661,8 @@ static void handle_data(char *s,int size)
     dblock *db = NULL;
 
     if (OPSZ_BITS(size)==8 && (*s=='\"' || *s=='\'')) {
-      if (db = parse_string(&opstart,*s,8)) {
+      db = parse_string(&opstart,*s,8);
+      if (db) {
         add_atom(0,new_data_atom(db,1));
         s = opstart;
       }
@@ -983,7 +986,9 @@ static void handle_assert(char *s)
     strbuf *buf;
 
     s = skip(s+1);
-    if (buf = parse_name(0,&s))
+
+    buf = parse_name(0,&s);
+    if (buf)
       msgstr = mystrdup(buf->str);
   }
 
@@ -993,9 +998,9 @@ static void handle_assert(char *s)
 
 static void handle_idnt(char *s)
 {
-  strbuf *name;
+  strbuf *name = parse_name(0,&s);
 
-  if (name = parse_name(0,&s))
+  if (name)
     setfilename(mystrdup(name->str));
 }
 
@@ -1035,16 +1040,18 @@ static void handle_nopage(char *s)
 
 static void handle_output(char *s)
 {
-  strbuf *buf;
+  strbuf *buf = parse_name(0,&s);
 
-  if (buf = parse_name(0,&s)) {
+  if (buf) {
     if (*(buf->str)=='.') {
       char *p;
       int outlen;
 
       if (!outname)
         outname = inname ? inname : "a";
-      if (p = strrchr(outname,'.'))
+
+      p = strrchr(outname,'.');
+      if (p)
         outlen = p - outname;
       else
         outlen = strlen(outname);
@@ -1061,9 +1068,9 @@ static void handle_output(char *s)
 
 static void handle_dsource(char *s)
 {
-  strbuf *name;
+  strbuf *name = parse_name(0,&s);
 
-  if (name = parse_name(0,&s))
+  if (name)
     setdebugname(mystrdup(name->str));
 }
 
@@ -1097,24 +1104,27 @@ static void handle_vdebug(char *s)
 
 static void handle_incdir(char *s)
 {
-  strbuf *name;
+  strbuf *name = parse_name(0,&s);
 
-  while (name = parse_name(0,&s)) {
+  while (name) {
     new_include_path(name->str);
     if (*s != ',') {
       return;
     }
     s = skip(s+1);
+
+    name = parse_name(0,&s);
   }
+
   syntax_error(5);
 }
 
 
 static void handle_include(char *s)
 {
-  strbuf *name;
+  strbuf *name = parse_name(0,&s);
 
-  if (name = parse_name(0,&s)) {
+  if (name) {
     include_source(name->str);
   }
 }
@@ -1122,11 +1132,11 @@ static void handle_include(char *s)
 
 static void handle_incbin(char *s)
 {
-  strbuf *name;
+  strbuf *name = parse_name(0,&s);
   taddr offs = 0;
   taddr length = 0;
 
-  if (name = parse_name(0,&s)) {
+  if (name) {
     s = skip(s);
     if (*s == ',') {
       if (!devpac_compat && !phxass_compat) {
@@ -1164,9 +1174,9 @@ static void handle_endr(char *s)
 
 static void handle_macro(char *s)
 {
-  strbuf *name;
+  strbuf *name = parse_identifier(0,&s);
 
-  if (name = parse_identifier(0,&s))
+  if (name)
     new_macro(name->str,macro_dirlist,endm_dirlist,NULL);
   else
     syntax_error(10);  /* identifier expected */
@@ -1247,7 +1257,9 @@ static void ifc(char *s,int b)
   str1 = parse_name(0,&s);
   if (str1!=NULL && *s==',') {
     s = skip(s+1);
-    if (str2 = parse_name(1,&s)) {
+
+    str2 = parse_name(1,&s);
+    if (str2) {
       result = strcmp(str1->str,str2->str) == 0;
       cond_if(result == b);
       return;
@@ -1276,7 +1288,9 @@ static void ifdef(char *s,int b)
     syntax_error(10);  /* identifier expected */
     return;
   }
-  if (sym = find_symbol(name))
+
+  sym = find_symbol(name);
+  if (sym)
     result = sym->type != IMPORT;
   else
     result = 0;
@@ -1298,7 +1312,8 @@ static void ifmacro(char *s,int b)
   char *name = s;
   int result;
 
-  if (s = skip_identifier(s)) {
+  s = skip_identifier(s);
+  if (s) {
     result = find_macro(name,s-name) != NULL;
     cond_if(result == b);
   }
@@ -1580,9 +1595,9 @@ static void handle_cargs(char *s)
 
 static void handle_printt(char *s)
 {
-  strbuf *txt;
+  strbuf *txt = parse_name(0,&s);
 
-  while (txt = parse_name(0,&s)) {
+  while (txt) {
     add_or_save_atom(new_text_atom(mystrdup(txt->str)));
     s = skip(s);
     if (*s != ',')
@@ -1591,6 +1606,8 @@ static void handle_printt(char *s)
     s = skip(s+1);
   }
   add_or_save_atom(new_text_atom(NULL));  /* new line */
+
+  txt = parse_name(0,&s);
 }
 
 static void handle_printv(char *s)
@@ -1643,9 +1660,9 @@ static void handle_echo(char *s)
 
 static void handle_showoffset(char *s)
 {
-  strbuf *txt;
+  strbuf *txt = parse_name(0,&s);
 
-  if (txt = parse_name(0,&s))
+  if (txt)
     add_or_save_atom(new_text_atom(mystrdup(txt->str)));
   add_or_save_atom(new_text_atom(" "));
   add_or_save_atom(new_expr_atom(curpc_expr(),PEXP_HEX,32));
@@ -2113,7 +2130,8 @@ void parse(void)
   int ext_cnt,op_cnt,inst_len;
   instruction *ip;
 
-  while (line = read_next_line()) {
+  line = read_next_line();
+  while (line) {
     if (parse_end)
       continue;
     s = line;
@@ -2125,7 +2143,8 @@ void parse(void)
       int idx;
 
       /* skip label, when present */
-      if (labname = parse_labeldef(&s,0)) {
+      labname = parse_labeldef(&s,0);
+      if (labname) {
         if (*s == ':')
           s++;  /* skip double-colon */
       }
@@ -2143,7 +2162,8 @@ void parse(void)
       continue;
     }
 
-    if (labname = parse_labeldef(&s,0)) {
+    labname = parse_labeldef(&s,0);
+    if (labname) {
       /* we have found a global or local label */
       uint32_t symflags = 0;
       symbol *label;
@@ -2309,6 +2329,8 @@ void parse(void)
 
     if (ip)
       add_atom(0,new_inst_atom(ip));
+
+    line = read_next_line();
   }
 
   cond_check();  /* check for open conditional blocks */
@@ -2489,7 +2511,9 @@ int expand_macro(source *src,char **line,char *d,int dlen)
       }
       else
         fmt = "%lu";
-      if (name = parse_symbol(&s)) {
+
+      name = parse_symbol(&s);
+      if (name) {
         if ((sym = find_symbol(name)) && sym->type==EXPRESSION) {
           if (eval_expr(sym->expr,&val,NULL,0)) {
             if (dlen > 9)
@@ -2620,7 +2644,9 @@ strbuf *get_local_label(int n,char **start)
   if (p!=NULL && *p=='\\' && ISIDSTART(*s) && *s!=local_char && *(p-1)!='$') {
     /* skip local part of global\local label */
     s = p + 1;
-    if (p = skip_local(s)) {
+
+    p = skip_local(s);
+    if (p) {
       name = make_local_label(n,*start,(s-1)-*start,s,*(p-1)=='$'?(p-1)-s:p-s);
       *start = skip(p);
     }
@@ -2683,7 +2709,8 @@ int init_syntax(void)
       char *p;
       int len;
 
-      if (p = strrchr(inname,'.')) {
+      p = strrchr(inname,'.');
+      if (p) {
         if (exec_out || tolower((unsigned char)*(p+1)) != 'o') {
           len = p - inname;
           outname = mymalloc(len+(exec_out?1:3));

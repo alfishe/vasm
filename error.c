@@ -152,7 +152,8 @@ static void error(int n,va_list vl,struct err_out *errlist,int offset)
       int recurs;
 
       child = cur_src;
-      while (parent = child->parent) {
+      parent = child->parent;
+      while (parent) {
         if (child->num_params >= 0)
           fprintf(f,"\tcalled");    /* macro called from */
         else
@@ -172,6 +173,11 @@ static void error(int n,va_list vl,struct err_out *errlist,int offset)
           fprintf(f," %d times",recurs);
         fprintf(f,"\n");
         child = parent;
+
+        if (child)
+          parent = child->parent;
+        else
+          parent = NULL;
       }
     }
     print_source_line(f);
@@ -243,8 +249,11 @@ static void modify_errors(struct err_out *err,int flags,va_list vl)
 {
   int n;
 
-  while (n = va_arg(vl,int)) {
+  n = va_arg(vl,int);
+  while (n) {
     err[n].flags = flags;
+
+    n = va_arg(vl,int);
   }
 }
 

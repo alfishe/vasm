@@ -270,7 +270,9 @@ static int resolve_section(section *sec)
     sec->pc=sec->org;
     for(p=sec->first;p;p=p->next){
       sec->pc=pcalign(p,sec->pc);
-      if(cur_src=p->src)
+
+      cur_src=p->src;
+      if(cur_src)
         cur_src->line=p->line;
 #if HAVE_CPU_OPTS
       if(p->type==OPTS){
@@ -413,7 +415,9 @@ static void assemble(void)
     for(p=sec->first,pp=NULL;p;p=p->next){
       basepc=sec->pc;
       sec->pc=pcalign(p,sec->pc);
-      if(cur_src=p->src)
+
+      cur_src=p->src;
+      if(cur_src)
         cur_src->line=p->line;
       if(p->list&&p->list->atom==p){
         p->list->sec=sec;
@@ -728,9 +732,9 @@ static void include_main_source(void)
     }
   }
   else {  /* no source file name given - read from stdin */
-    source *src;
+    source *src = stdin_source();
 
-    if (src = stdin_source()) {
+    if (src) {
       setfilename(src->name);
       setdebugname(src->name);
     }
@@ -1076,7 +1080,9 @@ section *new_section(char *name,char *attr,int align)
   section *p;
   if(unnamed_sections)
     name=name_from_attr(attr);
-  if(p=find_section(name,attr))
+
+  p=find_section(name,attr);
+  if(p)
     return p;
   p=mymalloc(sizeof(*p));
   p->next=0;
