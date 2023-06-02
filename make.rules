@@ -1,3 +1,7 @@
+MKDIR = mkdir -p
+RM = rm -f
+INSTALL = install
+
 PRE = obj$(TARGET)/$(CPU)_$(SYNTAX)_
 
 OUTFMTS = -DOUTAOUT -DOUTBIN -DOUTELF -DOUTHUNK -DOUTSREC -DOUTTOS -DOUTVOBJ \
@@ -21,16 +25,26 @@ VASMEXE = vasm$(CPU)_$(SYNTAX)$(TARGET)$(TARGETEXTENSION)
 VOBJDMPEXE = vobjdump$(TARGET)$(TARGETEXTENSION)
 
 
-all: $(VASMEXE) $(VOBJDMPEXE)
+all: bin $(VASMEXE) $(VOBJDMPEXE)
 
+install: all dest
+	$(INSTALL) bin/$(VASMEXE) $(DESTDIR)/bin/$(VASMEXE)
+	$(INSTALL) bin/$(VOBJDMPEXE) $(DESTDIR)/bin/$(VOBJDMPEXE)
+
+bin:
+	$(MKDIR) bin
+
+dest:
+	$(MKDIR) $(DESTDIR)/bin
+ 
 $(VASMEXE): $(OBJS)
-	$(LD) $(OBJS) $(LDFLAGS) $(LDOUT)$(VASMEXE)
+	$(LD) $(OBJS) $(LDFLAGS) $(LDOUT)bin/$(VASMEXE)
 
 $(VOBJDMPEXE): $(VODOBJS)
-	$(LD) $(VODOBJS) $(LDFLAGS) $(LDOUT)$(VOBJDMPEXE)
+	$(LD) $(VODOBJS) $(LDFLAGS) $(LDOUT)bin/$(VOBJDMPEXE)
 
 clean:
-	$(RM) $(OBJS) $(VASMEXE) $(VODOBJS) $(VOBJDMPEXE)
+	$(RM) $(OBJS) bin/$(VASMEXE) $(VODOBJS) bin/$(VOBJDMPEXE)
 
 
 $(PRE)vasm.o: vasm.c vasm.h symbol.h osdep.h stabs.h dwarf.h expr.h supp.h atom.h source.h listing.h cpus/$(CPU)/cpu.h syntax/$(SYNTAX)/syntax.h
